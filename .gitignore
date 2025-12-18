@@ -1,0 +1,14 @@
+node_modules
+.DS_Store
+dist
+dist-ssr
+/dist*
+pnpm-debug
+auto-*.d.ts
+.idea
+.history
+.vscode
+改进计划V2.md
+计划.md
+.agent/
+.pytest_cache
