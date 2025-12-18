@@ -4,7 +4,10 @@
 
 - 目标：自动采集/整理数据源，调用大模型生成各种软文（如公众号）（Markdown + HTML），支持复制/一键发布。
 - 技术栈：后端 FastAPI + MySQL + Redis + Celery；前端 Vue3 + Vite + Element Plus + Vue Router；多模型可切换（默认 DeepSeek）。
+## 部分截图展示
+![alt text](images/image.png)
 
+![image-20251218143232785](images/image-create.png)
 ## 环境准备
 
 在开始之前，请确保您的系统中已安装以下软件：
@@ -176,7 +179,3 @@ npm run dev
 
 说明：生成的文章会保留素材来源，方便后续回溯与复盘。
 
-## 部分截图展示
-![alt text](images\image.png)
-
-![image-20251218143232785](images\image-create.png)
