@@ -1,0 +1,25 @@
+.git
+.gitignore
+.vscode
+.idea
+
+# 前端依赖/产物（避免 build context 过大、并规避 Windows/pnpm 特殊文件模式问题）
+frontend/node_modules
+frontend/dist
+frontend/.vite
+frontend/.cache
+frontend/coverage
+
+# 后端缓存/产物
+backend/__pycache__
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+backend/.venv
+
+# 通用
+node_modules
+dist
+coverage
+*.log
+.DS_Store

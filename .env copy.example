@@ -1,0 +1,19 @@
+# Docker Compose 根目录环境变量示例（复制为 .env 后生效）
+
+# --------- 端口映射（宿主机端口 -> 容器端口）---------
+# MySQL 容器端口固定为 3306，这里配置宿主机对外暴露的端口，避免与本机已安装 MySQL 冲突
+MYSQL_PORT=3307
+
+# Redis 容器端口固定为 6379，这里配置宿主机对外暴露的端口，避免与本机已安装 Redis 冲突
+REDIS_PORT=6380
+
+# --------- MySQL 初始化账号密码 ---------
+# root 密码（用于管理员操作）
+MYSQL_ROOT_PASSWORD=password
+
+# 默认数据库名
+MYSQL_DATABASE=auto_media
+
+# 应用账号（建议后端使用该账号连接，避免直接使用 root）
+MYSQL_USER=auto_media
+MYSQL_PASSWORD=auto_media_pass

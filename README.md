@@ -2,6 +2,12 @@
 
 ## 概述
 
+- 背景：日常做内容时，资料分散（网页/文档/热点）、整理耗时、风格不统一、发布流程重复，导致“找资料 + 写稿 + 排版 + 发稿”成本高且难以规模化。
+- 为什么做：把采集、沉淀、生成、编辑、发布串成一条可复用的流水线，让内容生产从“手工作坊”变成“可追溯的流程化生产”。
+- 适用：
+  - 需要高频产出（公众号/图文为主），但人手有限的团队/个人
+  - 希望把热点/资料沉淀为素材库，长期复用与复盘
+  - 需要多模型切换、可控生成、并支持复制/一键发布的场景
 - 目标：自动采集/整理数据源，调用大模型生成各种软文（如公众号）（Markdown + HTML），支持复制/一键发布。
 - 技术栈：后端 FastAPI + MySQL + Redis + Celery；前端 Vue3 + Vite + Element Plus + Vue Router；多模型可切换（默认 DeepSeek）。
 ## 部分截图展示
@@ -158,6 +164,76 @@ python -m celery -A app.celery_app.celery_app beat -l info
 
 已有 API 列表与说明请查看：[`api.md`](./api.md)
 
+## Docker 一键启动（推荐）
+
+说明：该模式会同时启动：
+
+- mysql（8.0）
+- redis（7）
+- backend（FastAPI，端口 8010）
+- worker（Celery worker）
+- frontend（Nginx 静态站点 + 反向代理，端口 5173）
+
+### 1) 启动
+
+在项目根目录执行：
+
+```bash
+# 复制环境变量模板（用于端口映射与 MySQL 账号密码）
+copy .env.example .env
+```
+
+说明：你可以在 `.env` 里配置：
+
+- `MYSQL_PORT`：宿主机映射端口（默认 3307 -> 容器 3306）
+- `REDIS_PORT`：宿主机映射端口（默认 6380 -> 容器 6379）
+- `MYSQL_ROOT_PASSWORD`：root 密码
+- `MYSQL_USER` / `MYSQL_PASSWORD`：应用账号密码（后端默认用该账号连接）
+
+```bash
+docker compose up -d --build
+```
+
+启动后访问：
+
+1. 前端：`http://localhost:5173`
+1. 后端健康检查：`http://localhost:8010/health`
+
+### 2) 数据持久化
+
+Docker 默认会创建并挂载数据卷：
+
+1. `mysql_data`：MySQL 数据
+1. `redis_data`：Redis AOF 数据
+1. `backend_uploads`：后端上传目录（`/app/uploads`）
+
+### 3) 可选：启用 Celery Beat（定时任务）
+
+Beat 默认不启动（避免你本地无意触发定时跑批）。如需启用：
+
+1. 修改 `backend/.env.docker`：
+
+```env
+DAILY_HOTSPOT_BEAT_ENABLED=true
+# 可选：MORNING_BRIEF_ENABLED=true
+```
+
+1. 使用 beat profile 启动：
+
+```bash
+docker compose --profile beat up -d --build
+```
+
+你也可以执行根目录的 `docker-smoke-test.ps1` 做启动后探活自检。
+```powershell
+powershell -ExecutionPolicy Bypass -File .\docker-smoke-test.ps1
+```
+
+### 4) 常见问题
+
+1. **端口占用**：确保本机 `3306/6379/8010/5173` 未被占用。
+1. **数据库初始化**：后端启动时会自动 `create_all` 建表；首次启动 MySQL 可能需要几十秒。
+
 ## 前端运行
 
 ```bash
@@ -178,4 +254,3 @@ npm run dev
 - 混合：热点定方向 + 抓取补背景 + 手工补观点 → 同一素材包 → 生成
 
 说明：生成的文章会保留素材来源，方便后续回溯与复盘。
-

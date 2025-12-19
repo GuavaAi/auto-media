@@ -1,0 +1,130 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-auto_media}
+      MYSQL_USER: ${MYSQL_USER:-auto_media}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-auto_media_pass}
+      TZ: Asia/Shanghai
+    command:
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
+      - "--default-time-zone=+08:00"
+    ports:
+      - "${MYSQL_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-password}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.docker
+    environment:
+      MYSQL_URL: mysql+pymysql://${MYSQL_USER:-auto_media}:${MYSQL_PASSWORD:-auto_media_pass}@mysql:3306/${MYSQL_DATABASE:-auto_media}?charset=utf8mb4&init_command=SET%20time_zone%3D%27%2B08%3A00%27
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENV: docker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8010:8010"
+    volumes:
+      - backend_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.docker
+    environment:
+      MYSQL_URL: mysql+pymysql://${MYSQL_USER:-auto_media}:${MYSQL_PASSWORD:-auto_media_pass}@mysql:3306/${MYSQL_DATABASE:-auto_media}?charset=utf8mb4&init_command=SET%20time_zone%3D%27%2B08%3A00%27
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENV: docker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "celery", "-A", "app.celery_app.celery_app", "worker", "-l", "info"]
+
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    profiles: ["beat"]
+    env_file:
+      - ./backend/.env.docker
+    environment:
+      MYSQL_URL: mysql+pymysql://${MYSQL_USER:-auto_media}:${MYSQL_PASSWORD:-auto_media_pass}@mysql:3306/${MYSQL_DATABASE:-auto_media}?charset=utf8mb4&init_command=SET%20time_zone%3D%27%2B08%3A00%27
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENV: docker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "celery", "-A", "app.celery_app.celery_app", "beat", "-l", "info"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: /api
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  mysql_data:
+  redis_data:
+  backend_uploads:
