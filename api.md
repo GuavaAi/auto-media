@@ -53,3 +53,12 @@
   - `DELETE /api/materials/items/{id}` 删除条目
   - `GET /api/materials/items/search?q=&pack_id=&limit=&offset=` 条目搜索
   - `POST /api/materials/packs/{id}/dedupe` 素材包去重（按文本规范化 hash）
+
+### 登录与用户管理（新增）
+
+系统默认开启 JWT 鉴权：除 `/api/auth/*` 外，其余接口需要在请求头携带 `Authorization: Bearer <token>`。
+
+- **默认管理员**：`admin / admin123`
+- **登录接口**：`POST /api/auth/login`
+- **当前用户**：`GET /api/auth/profile`
+- **用户管理（管理员）**：`/api/users`

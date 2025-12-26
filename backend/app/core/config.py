@@ -129,6 +129,20 @@ class Settings:
             os.getenv("MATERIAL_COMPRESS_BULLET_COUNT", "6")
         )
 
+        # 鉴权/用户体系
+        self.SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-change-me")
+        self.JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+        self.ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "120"))
+        self.DEFAULT_ADMIN_USERNAME: str = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
+        self.DEFAULT_ADMIN_PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
+        self.DEFAULT_ADMIN_EMAIL: str | None = os.getenv("DEFAULT_ADMIN_EMAIL")
+        self.DISABLE_AUTH_GUARD: bool = os.getenv("DISABLE_AUTH_GUARD", "false").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
 
 @lru_cache
 def get_settings() -> Settings:

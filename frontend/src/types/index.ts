@@ -379,3 +379,51 @@ export interface PublishTask {
   created_at: string;
   updated_at: string;
 }
+
+export interface UserInfo {
+  id: number;
+  username: string;
+  full_name?: string | null;
+  email?: string | null;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserListResponse {
+  total: number;
+  items: UserInfo[];
+}
+
+export interface UserCreate {
+  username: string;
+  password: string;
+  full_name?: string | null;
+  email?: string | null;
+  role?: string;
+  is_active?: boolean;
+}
+
+export interface UserUpdate {
+  full_name?: string | null;
+  email?: string | null;
+  role?: string;
+  is_active?: boolean;
+  password?: string | null;
+}
+
+export interface AuthLoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface AuthLoginResponse {
+  access_token: string;
+  token_type: string;
+  user: UserInfo;
+}
+
+export interface AuthProfileResponse {
+  user: UserInfo;
+}

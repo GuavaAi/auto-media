@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.material import MaterialItemCreate
 
@@ -22,8 +22,7 @@ class CrawlRecordBase(BaseModel):
 class CrawlRecordOut(CrawlRecordBase):
     id: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlRecordDetailOut(CrawlRecordOut):

@@ -119,6 +119,13 @@ VITE_API_BASE=http://localhost:8010/api
 
 接口探活：`GET http://localhost:8010/health`
 
+
+开发期如需临时关闭鉴权，可在 `backend/.env` 配置：
+
+```env
+DISABLE_AUTH_GUARD=true
+```
+
 ### 本地启动模式（两种方式二选一）
 
 #### 方式 A：Eager（推荐本地调试，少开进程）
@@ -256,5 +263,11 @@ npm run dev
 # 默认地址 http://localhost:5173
 # data 来源走 VITE_API_BASE
 ```
+
+### 前端登录说明（新增）
+
+1. 打开前端后会自动跳转到 `/login`
+2. 使用默认管理员 `admin / admin123` 登录
+3. 登录后右上角用户菜单可退出；管理员可进入 **用户管理** 页面创建/编辑用户
 
 

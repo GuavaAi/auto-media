@@ -18,3 +18,5 @@ alibabacloud_iqs20241111==1.6.2
 alibabacloud_tea_openapi==0.4.2
 alibabacloud_tea_util==0.3.13
 oss2==2.18.6
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0

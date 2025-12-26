@@ -94,12 +94,12 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import dayjs from "dayjs";
 import { listDailyHotspots, buildDailyHotspots, quickGenerateFromEvent, quickGenerateFromTopic } from "@/api/dailyHotspots";
 import AIThinking from "@/components/AIThinking.vue";
-import type { DailyHotspotEventOut } from "@/types";
+import type { DailyHotspotEvent } from "@/types";
 
 const router = useRouter();
 const searchQuery = ref("");
 const loading = ref(false);
-const hotspots = ref<DailyHotspotEventOut[]>([]);
+const hotspots = ref<DailyHotspotEvent[]>([]);
 const generatingId = ref<number | null>(null);
 const isSearching = ref(false);
 
@@ -153,7 +153,7 @@ const buildToday = async () => {
   }
 };
 
-const handleQuickDraft = async (item: DailyHotspotEventOut) => {
+const handleQuickDraft = async (item: DailyHotspotEvent) => {
   generatingId.value = item.id;
   try {
     ElMessage.info("AI 正在阅读素材、构思文章...");
@@ -181,9 +181,11 @@ const handleSearch = async () => {
     // 实时联网搜索 -> 生成
     const article = await quickGenerateFromTopic(q);
     ElMessage.success("灵感生成成功！");
-    router.push(`/articles/${article.id}`);
+    await router.push(`/articles/${article.id}`);
   } catch (err: any) {
     ElMessage.error(err.message || "生成失败，请重试");
+  } finally {
+    // 中文说明：无论成功跳转还是失败，都需要关闭对话框蒙层
     isSearching.value = false;
   }
 };

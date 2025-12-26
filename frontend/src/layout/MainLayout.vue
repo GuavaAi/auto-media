@@ -78,6 +78,10 @@
             <el-icon><Key /></el-icon>
             <span>API Key 池</span>
           </el-menu-item>
+          <el-menu-item index="/users" v-if="isAdmin">
+            <el-icon><User /></el-icon>
+            <span>用户管理</span>
+          </el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
@@ -90,6 +94,20 @@
         <div class="header-right">
           <el-button type="warning" size="large" @click="goConfigGuide">配置教程</el-button>
           <el-button type="primary" plain @click="goQuickStart">新手教程</el-button>
+          <el-divider direction="vertical" />
+          <el-dropdown>
+            <span class="user-entry">
+              <el-icon><UserFilled /></el-icon>
+              <span class="user-name">{{ displayName }}</span>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item>{{ currentUser?.role === "admin" ? "管理员" : "成员" }}</el-dropdown-item>
+                <el-dropdown-item divided @click="goUsers" v-if="isAdmin">用户管理</el-dropdown-item>
+                <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </el-header>
 
@@ -109,6 +127,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ElMessageBox } from "element-plus";
 import {
   EditPen,
   DataLine,
@@ -119,11 +138,16 @@ import {
   Key,
   Odometer,
   FolderOpened,
-  Promotion
+  Promotion,
+  UserFilled,
+  User
 } from "@element-plus/icons-vue";
+
+import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
 
 const goQuickStart = () => {
   router.push("/quickstart");
@@ -131,6 +155,23 @@ const goQuickStart = () => {
 
 const goConfigGuide = () => {
   router.push("/config-guide");
+};
+
+const goUsers = () => {
+  router.push("/users");
+};
+
+const handleLogout = () => {
+  ElMessageBox.confirm("确定要退出登录吗？", "提示", {
+    type: "warning",
+    confirmButtonText: "退出",
+    cancelButtonText: "取消",
+  })
+    .then(() => {
+      authStore.logout();
+      router.push("/login");
+    })
+    .catch(() => undefined);
 };
 
 const activeMenu = computed(() => {
@@ -145,6 +186,7 @@ const activeMenu = computed(() => {
   if (route.path.startsWith("/daily-hotspots")) return "/daily-hotspots";
   if (route.path.startsWith("/prompt-templates")) return "/prompt-templates";
   if (route.path.startsWith("/api-keys")) return "/api-keys";
+  if (route.path.startsWith("/users")) return "/users";
   return "/generate";
 });
 
@@ -164,7 +206,11 @@ const openedMenus = computed(() => {
   ) {
     return ["group-data"];
   }
-  if (route.path.startsWith("/prompt-templates") || route.path.startsWith("/api-keys")) {
+  if (
+    route.path.startsWith("/prompt-templates") ||
+    route.path.startsWith("/api-keys") ||
+    route.path.startsWith("/users")
+  ) {
     return ["group-system"];
   }
   return [];
@@ -184,6 +230,7 @@ const currentPageTitle = computed(() => {
     "/datasources": "数据源配置",
     "/prompt-templates": "Prompt 模板",
     "/api-keys": "API Key 池",
+    "/users": "用户管理",
   };
   // 简单匹配前缀
   for (const key in map) {
@@ -191,6 +238,10 @@ const currentPageTitle = computed(() => {
   }
   return "工作台";
 });
+
+const currentUser = computed(() => authStore.user);
+const displayName = computed(() => authStore.displayName);
+const isAdmin = computed(() => authStore.isAdmin);
 </script>
 
 <style scoped>

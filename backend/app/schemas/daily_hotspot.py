@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DailyHotspotEventBase(BaseModel):
@@ -19,8 +19,7 @@ class DailyHotspotEventOut(DailyHotspotEventBase):
     source_count: int = Field(0, description="来源文章数")
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DailyHotspotSourceOut(BaseModel):
@@ -30,8 +29,7 @@ class DailyHotspotSourceOut(BaseModel):
     title: Optional[str] = None
     weight: float = 1.0
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DailyHotspotItemOut(BaseModel):
@@ -44,8 +42,7 @@ class DailyHotspotItemOut(BaseModel):
     score: float = 0.0
     extra: Optional[Dict[str, Any]] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DailyHotspotListResponse(BaseModel):
