@@ -40,7 +40,7 @@ export const getPromptTemplate = (key: string, version?: number) =>
     })
     .then((r) => r.data.item as PromptTemplate);
 
-export const createPromptTemplate = (payload: { key: string; content: string }) =>
+export const createPromptTemplate = (payload: { key?: string; name?: string; content: string }) =>
   http
     .post<{ item: PromptTemplate }>("/generate/prompt-templates", payload)
     .then((r) => r.data.item as PromptTemplate);

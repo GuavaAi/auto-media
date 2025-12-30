@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from app import deps
 from app.models.datasource import DataSource
 from app.models.datasource_content import DataSourceContent
+from app.models.user import User
 from app.schemas.crawl_record import (
     CrawlRecordDetailOut,
     CrawlRecordExtractMaterialsRequest,
@@ -29,6 +30,7 @@ from app.services.api_key_pool import pick_api_key
 from app.services.crawler import apply_parser, get_crawler_by_engine
 from app.services.readability_extractor import extract_main_text
 from app.services.text_cleaner import clean_text
+from app.services.user_service import is_admin
 
 router = APIRouter()
 
@@ -166,9 +168,12 @@ def list_crawl_records(
     limit: int = Query(20, ge=1, le=200, description="分页大小"),
     offset: int = Query(0, ge=0, description="偏移量"),
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> CrawlRecordListResponse:
     # 列表查询：支持 datasource_id、日期范围筛选 + limit/offset 分页
     q = db.query(DataSourceContent)
+    if not is_admin(current_user):
+        q = q.filter(DataSourceContent.user_id == current_user.id)
     if datasource_id is not None:
         q = q.filter(DataSourceContent.datasource_id == datasource_id)
 
@@ -226,8 +231,15 @@ def list_crawl_records(
 
 
 @router.get("/{record_id}", response_model=CrawlRecordDetailOut, summary="抓取记录详情")
-def get_crawl_record(record_id: int, db: Session = Depends(deps.get_db)) -> CrawlRecordDetailOut:
-    rec = db.query(DataSourceContent).filter(DataSourceContent.id == record_id).first()
+def get_crawl_record(
+    record_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> CrawlRecordDetailOut:
+    q = db.query(DataSourceContent).filter(DataSourceContent.id == record_id)
+    if not is_admin(current_user):
+        q = q.filter(DataSourceContent.user_id == current_user.id)
+    rec = q.first()
     if not rec:
         raise HTTPException(status_code=404, detail="抓取记录不存在")
 
@@ -263,8 +275,12 @@ def extract_crawl_record_materials(
     record_id: int,
     payload: CrawlRecordExtractMaterialsRequest,
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> CrawlRecordExtractMaterialsResponse:
-    rec = db.query(DataSourceContent).filter(DataSourceContent.id == record_id).first()
+    q = db.query(DataSourceContent).filter(DataSourceContent.id == record_id)
+    if not is_admin(current_user):
+        q = q.filter(DataSourceContent.user_id == current_user.id)
+    rec = q.first()
     if not rec:
         raise HTTPException(status_code=404, detail="抓取记录不存在")
 
@@ -292,7 +308,11 @@ def extract_crawl_record_materials(
     response_model=CrawlRecordQuickFetchResponse,
     summary="快捷抓取：针对单个 URL 做一次性抓取并生成抓取记录",
 )
-def quick_fetch(payload: CrawlRecordQuickFetchRequest, db: Session = Depends(deps.get_db)) -> CrawlRecordQuickFetchResponse:
+def quick_fetch(
+    payload: CrawlRecordQuickFetchRequest,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> CrawlRecordQuickFetchResponse:
     url = (payload.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url 不能为空")
@@ -356,6 +376,7 @@ def quick_fetch(payload: CrawlRecordQuickFetchRequest, db: Session = Depends(dep
                 display_title = t.strip()
 
         rec = DataSourceContent(
+            user_id=current_user.id,
             datasource_id=ds.id,
             source_type="url",
             title=display_title or url,
@@ -407,6 +428,7 @@ def quick_fetch(payload: CrawlRecordQuickFetchRequest, db: Session = Depends(dep
 def quick_fetch_preview(
     payload: CrawlRecordQuickFetchPreviewRequest,
     db: Session = Depends(deps.get_db),
+    _user: User = Depends(deps.require_user),
 ) -> CrawlRecordQuickFetchPreviewResponse:
     url = (payload.url or "").strip()
     if not url:

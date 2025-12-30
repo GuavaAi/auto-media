@@ -45,36 +45,44 @@
             <p class="tip">说明：FireCrawl 的“关键词搜索”已迁移到 API 数据源模式；此处仅用于 URL 抓取。</p>
           </div>
         </el-form-item>
-        <el-form-item v-if="crawlerEngine === 'crawl4ai'" label="crawl4ai 配置">
-          <div class="kv-list">
-            <el-select v-model="crawl4aiBrowser" placeholder="浏览器内核" class="mb8">
-              <el-option label="chromium（默认）" value="chromium" />
-              <el-option label="firefox" value="firefox" />
-              <el-option label="webkit" value="webkit" />
-            </el-select>
-            <div class="inline-row mb8">
+        <el-form-item v-if="crawlerEngine === 'crawl4ai'">
+          <template #label>
+            <span>crawl4ai 配置</span>
+            <el-button link type="primary" class="ml8" @click="crawl4aiExpanded = !crawl4aiExpanded">
+              {{ crawl4aiExpanded ? "收起" : "展开" }}
+            </el-button>
+          </template>
+          <el-collapse-transition>
+            <div v-show="crawl4aiExpanded" class="kv-list">
+              <el-select v-model="crawl4aiBrowser" placeholder="浏览器内核" class="mb8">
+                <el-option label="chromium（默认）" value="chromium" />
+                <el-option label="firefox" value="firefox" />
+                <el-option label="webkit" value="webkit" />
+              </el-select>
+              <div class="inline-row mb8">
+                <el-input
+                  v-model.number="crawl4aiWaitMs"
+                  type="number"
+                  placeholder="渲染等待毫秒，默认 800"
+                  style="width: 220px"
+                />
+                <el-switch v-model="crawl4aiStealth" active-text="Stealth" inactive-text="关闭" />
+              </div>
               <el-input
-                v-model.number="crawl4aiWaitMs"
-                type="number"
-                placeholder="渲染等待毫秒，默认 800"
-                style="width: 220px"
+                v-model="crawl4aiJsCode"
+                type="textarea"
+                :rows="3"
+                placeholder="可选 JS 代码，换行分多段执行"
               />
-              <el-switch v-model="crawl4aiStealth" active-text="Stealth" inactive-text="关闭" />
+              <el-input
+                v-model="crawl4aiPrompt"
+                type="textarea"
+                :rows="3"
+                placeholder="可选提示语：用于指导 crawl4ai 做内容抽取/整理（若当前版本不支持将自动忽略）"
+              />
+              <p class="tip">本地模式需已安装 crawl4ai/Playwright。</p>
             </div>
-            <el-input
-              v-model="crawl4aiJsCode"
-              type="textarea"
-              :rows="3"
-              placeholder="可选 JS 代码，换行分多段执行"
-            />
-            <el-input
-              v-model="crawl4aiPrompt"
-              type="textarea"
-              :rows="3"
-              placeholder="可选提示语：用于指导 crawl4ai 做内容抽取/整理（若当前版本不支持将自动忽略）"
-            />
-            <p class="tip">本地模式需已安装 crawl4ai/Playwright。</p>
-          </div>
+          </el-collapse-transition>
         </el-form-item>
         <el-form-item label="返回过滤 (可选)">
           <div class="kv-list">
@@ -231,7 +239,8 @@ const usePlaywright = ref<boolean>(false);
 const useReadability = ref<boolean>(true);
 const crawlerEngine = ref<string>("crawl4ai");
 const crawl4aiBrowser = ref<string>("chromium");
-const crawl4aiWaitMs = ref<number | null>(null);
+// 默认等待 2000ms，便于弱网/慢渲染页面
+const crawl4aiWaitMs = ref<number | null>(2000);
 const crawl4aiJsCode = ref<string>("");
 const crawl4aiPrompt = ref<string>("");
 const crawl4aiStealth = ref<boolean>(true);
@@ -243,6 +252,7 @@ const elementPickerVisible = ref(false);
 const subPagePickerVisible = ref(false);
 const subPagePreviewUrl = ref("");
 const subPageLoading = ref(false);
+const crawl4aiExpanded = ref(false);
 
 const openElementPicker = () => {
   if (!(props.previewUrl || "").trim()) {
@@ -341,10 +351,11 @@ const resetLocalState = () => {
   useReadability.value = true;
   crawlerEngine.value = "crawl4ai";
   crawl4aiBrowser.value = "chromium";
-  crawl4aiWaitMs.value = null;
+  crawl4aiWaitMs.value = 2000;
   crawl4aiJsCode.value = "";
   crawl4aiPrompt.value = "";
   crawl4aiStealth.value = true;
+  crawl4aiExpanded.value = false;
   lastEmitted.value = "{}";
   nextTick(() => {
     syncingFromModel.value = false;
@@ -474,7 +485,7 @@ const initFromModel = (val: Record<string, unknown> | null) => {
     typeof waitMsRaw === "number" && !Number.isNaN(waitMsRaw)
       ? waitMsRaw
       : Number(waitMsRaw);
-  crawl4aiWaitMs.value = parsedWait && parsedWait > 0 ? parsedWait : null;
+  crawl4aiWaitMs.value = parsedWait && parsedWait > 0 ? parsedWait : 2000;
   const jsCodeList = Array.isArray(c4opts.js_code)
     ? (c4opts.js_code as string[])
     : typeof c4opts.js_code === "string"
@@ -485,6 +496,8 @@ const initFromModel = (val: Record<string, unknown> | null) => {
     (c4opts.prompt as string) || (c4opts.llm_prompt as string) || (c4opts.extraction_prompt as string) || "";
   crawl4aiStealth.value =
     typeof c4opts.stealth === "boolean" ? (c4opts.stealth as boolean) : true;
+  // 若已有 crawl4ai 详细配置，默认展开方便查看；否则保持收起
+  crawl4aiExpanded.value = Object.keys(c4opts).length > 0;
 
   const subParserCfg = (val?.sub_parser || {}) as Record<string, unknown>;
   subParser.cssSelector = (subParserCfg.css_selector as string) || "";

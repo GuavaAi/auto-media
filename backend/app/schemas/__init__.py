@@ -30,3 +30,5 @@ from app.schemas.material import (  # noqa: F401
     MaterialItemSearchResponse,
     DedupeResponse,
 )
+
+from app.schemas.role import RoleCreate, RoleListResponse, RoleOut, RoleUpdate  # noqa: F401

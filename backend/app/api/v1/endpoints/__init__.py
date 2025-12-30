@@ -11,5 +11,6 @@ from app.api.v1.endpoints import (  # noqa: F401
     material,
     publish,
     quick_generate,
+    role,
     user,
 )

@@ -88,37 +88,47 @@ VITE_API_BASE=http://localhost:8010/api
 
 ## 后端运行
 
-1. **安装依赖**:
-   进入 `backend` 目录，执行：
-   ```bash
-   pip install -r requirements.txt
-   ```
+选择以下任意一种方式启动后端服务：
 
-   如果你需要使用 [`crawl4ai`](https://github.com/unclecode/crawl4ai)（抓取/浏览器渲染相关能力），还需要额外完成浏览器依赖安装（至少安装一个浏览器内核，例如 Chromium）：
+<details open>
+<summary><strong>方式一：本地源码启动（推荐开发调试）</strong></summary>
 
-   ```bash
-   # Install the package
-   pip install -U crawl4ai
-   
-   # For pre release versions
-   pip install crawl4ai --pre
-   
-   # Run post-installation setup
-   crawl4ai-setup
-   
-   # Verify your installation
-   crawl4ai-doctor
-   
-   # Install a browser (at least one)
-   python -m playwright install --with-deps chromium
-   ```
-2. **启动服务**:
-   ```bash
-   uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
-   ```
+<br/>
+
+### 1. 安装依赖
+
+进入 `backend` 目录，执行：
+
+```bash
+pip install -r requirements.txt
+```
+
+如果你需要使用 [`crawl4ai`](https://github.com/unclecode/crawl4ai)（抓取/浏览器渲染相关能力），还需要额外完成浏览器依赖安装（至少安装一个浏览器内核，例如 Chromium）：
+
+```bash
+# Install the package
+pip install -U crawl4ai
+
+# For pre release versions
+pip install crawl4ai --pre
+
+# Run post-installation setup
+crawl4ai-setup
+
+# Verify your installation
+crawl4ai-doctor
+
+# Install a browser (at least one)
+python -m playwright install --with-deps chromium
+```
+
+### 2. 启动服务
+
+```bash
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+```
 
 接口探活：`GET http://localhost:8010/health`
-
 
 开发期如需临时关闭鉴权，可在 `backend/.env` 配置：
 
@@ -126,27 +136,23 @@ VITE_API_BASE=http://localhost:8010/api
 DISABLE_AUTH_GUARD=true
 ```
 
-### 本地启动模式（两种方式二选一）
+### 3. 本地启动模式（进阶）
 
-#### 方式 A：Eager（推荐本地调试，少开进程）
+**方式 A：Eager（推荐本地调试，少开进程）**
 
 适用：你希望只启动 `uvicorn`，不单独启动 Celery worker。
 
 1. 在 `backend/.env` 增加：
+   ```env
+   CELERY_ALWAYS_EAGER=true
+   ```
+2. 启动后端：
+   ```bash
+   uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+   ```
+   说明：开启后，`apply_async` 会在 Web 进程内立即执行（便于调试发布任务/离线任务）。
 
-```env
-CELERY_ALWAYS_EAGER=true
-```
-
-1. 启动后端：
-
-```bash
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
-```
-
-说明：开启后，`apply_async` 会在 Web 进程内立即执行（便于调试发布任务/离线任务）。
-
-#### 方式 B：真异步（worker/beat）一键启动
+**方式 B：真异步（worker/beat）一键启动**
 
 适用：你希望保持与生产一致的异步执行方式（任务入队后由 worker 消费）。
 
@@ -160,7 +166,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 -Port 8010
 powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 -Port 8010 -Beat
 ```
 
-## 离线任务（Celery / Beat）
+### 4. 离线任务（Celery / Beat）
 
 用于“每日热点榜单”自动跑批（阶段2）。
 
@@ -180,11 +186,12 @@ python -m celery -A app.celery_app.celery_app beat -l info
 
 说明：仅当 `DAILY_HOTSPOT_BEAT_ENABLED=true` 时会注册定时任务。
 
-### API 文档
+</details>
 
-已有 API 列表与说明请查看：[`api.md`](./api.md)
+<details>
+<summary><strong>方式二：Docker 一键启动（推荐全栈部署）</strong></summary>
 
-## Docker 一键启动（推荐）
+<br/>
 
 说明：该模式会同时启动：
 
@@ -217,15 +224,15 @@ docker compose up -d --build
 启动后访问：
 
 1. 前端：`http://localhost:5173`
-1. 后端健康检查：`http://localhost:8010/health`
+2. 后端健康检查：`http://localhost:8010/health`
 
 ### 2) 数据持久化
 
 Docker 默认会创建并挂载数据卷：
 
 1. `mysql_data`：MySQL 数据
-1. `redis_data`：Redis AOF 数据
-1. `backend_uploads`：后端上传目录（`/app/uploads`）
+2. `redis_data`：Redis AOF 数据
+3. `backend_uploads`：后端上传目录（`/app/uploads`）
 
 ### 3) 可选：启用 Celery Beat（定时任务）
 
@@ -238,7 +245,7 @@ DAILY_HOTSPOT_BEAT_ENABLED=true
 # 可选：MORNING_BRIEF_ENABLED=true
 ```
 
-1. 使用 beat profile 启动：
+2. 使用 beat profile 启动：
 
 ```bash
 docker compose --profile beat up -d --build
@@ -252,7 +259,13 @@ powershell -ExecutionPolicy Bypass -File .\docker-smoke-test.ps1
 ### 4) 常见问题
 
 1. **端口占用**：确保本机 `3306/6379/8010/5173` 未被占用。
-1. **数据库初始化**：后端启动时会自动 `create_all` 建表；首次启动 MySQL 可能需要几十秒。
+2. **数据库初始化**：后端启动时会自动 `create_all` 建表；首次启动 MySQL 可能需要几十秒。
+
+</details>
+
+### API 文档
+
+已有 API 列表与说明请查看：[`api.md`](./api.md)
 
 ## 前端运行
 

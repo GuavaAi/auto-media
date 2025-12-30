@@ -8,7 +8,7 @@ from app.core.security import get_password_hash
 from app.models.user import User
 from app.schemas.user import UserCreate, UserListResponse, UserOut, UserUpdate
 
-router = APIRouter(dependencies=[Depends(deps.require_admin)])
+router = APIRouter(dependencies=[Depends(deps.require_menu("users"))])
 
 
 @router.get("/", response_model=UserListResponse, summary="用户列表")
@@ -23,8 +23,16 @@ def list_users(db: Session = Depends(deps.get_db)) -> UserListResponse:
 
 
 @router.post("/", response_model=UserOut, summary="创建用户")
-def create_user(payload: UserCreate, db: Session = Depends(deps.get_db)) -> UserOut:
+def create_user(
+    payload: UserCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> UserOut:
     """创建新用户"""
+
+    # 中文说明：避免非管理员通过用户管理接口创建 admin 账号造成越权
+    if (payload.role or "").lower() == "admin" and (current_user.role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="无权限创建管理员账号")
 
     exists = db.query(User).filter(User.username == payload.username).first()
     if exists:
@@ -50,7 +58,7 @@ def update_user(
     user_id: int,
     payload: UserUpdate,
     db: Session = Depends(deps.get_db),
-    current_admin: User = Depends(deps.require_admin),
+    current_user: User = Depends(deps.require_user),
 ) -> UserOut:
     """更新用户资料/角色/状态"""
 
@@ -58,11 +66,16 @@ def update_user(
     if not row:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    if row.id == current_admin.id:
+    if row.id == current_user.id:
         if payload.role and payload.role != row.role:
             raise HTTPException(status_code=400, detail="不能修改自己的角色")
         if payload.is_active is False:
             raise HTTPException(status_code=400, detail="不能禁用当前登录账号")
+
+    # 中文说明：避免非管理员把任意用户提升为 admin
+    if payload.role is not None:
+        if payload.role.lower() == "admin" and (current_user.role or "").lower() != "admin":
+            raise HTTPException(status_code=403, detail="无权限设置管理员角色")
 
     if payload.full_name is not None:
         row.full_name = payload.full_name

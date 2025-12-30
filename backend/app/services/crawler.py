@@ -382,7 +382,10 @@ def get_crawler_by_engine(
     - firecrawl：需要配置 FIRECRAWL_API_KEY
     """
     eng = (engine or "").strip().lower()
+    # 中文说明：当未指定引擎但 use_playwright=True 时，优先使用 Playwright
     if not eng:
+        if use_playwright:
+            return PlaywrightCrawler()
         eng = "crawl4ai"
     if eng == "requests":
         return RequestsCrawler()
@@ -421,12 +424,13 @@ def apply_parser(html: str, parser_cfg: Optional[Dict]) -> str:
     try:
         soup = BeautifulSoup(html, "html.parser")
         css_selector = parser_cfg.get("css_selector")
-        if css_selector:
+        looks_like_html = "<" in (html or "") and ">" in (html or "")
+        if css_selector and looks_like_html:
             selected = soup.select(css_selector)
             if selected:
                 parsed_text = "\n".join([s.get_text(separator="\n", strip=True) for s in selected])
             else:
-                parsed_text = soup.get_text(separator="\n", strip=True)
+                return ""
         else:
             parsed_text = soup.get_text(separator="\n", strip=True)
         include_kw = parser_cfg.get("include_keywords") or []
@@ -452,24 +456,32 @@ def discover_links(
 ) -> List[str]:
     """
     从 HTML 中抽取同域链接，受 budget 限制。
+    仅在 parser_cfg.css_selector 指定的区域内查找链接，过滤干扰项。
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     if not budget:
         return []
 
-    parsed_text = apply_parser(html, parser_cfg)
-    if parsed_text == "":
-        return []
     try:
         soup = BeautifulSoup(html, "html.parser")
     except Exception:
         return []
 
+    # 根据 css_selector 限定搜索范围，过滤页面其他区域的干扰链接
     search_roots = [soup]
     css_selector = parser_cfg.get("css_selector") if isinstance(parser_cfg, dict) else None
     if css_selector:
         selected = soup.select(css_selector)
         if selected:
             search_roots = selected
+            logger.debug(f"[discover_links] css_selector='{css_selector}' 匹配到 {len(selected)} 个元素")
+        else:
+            # 选择器未匹配到任何元素，返回空列表避免抓取干扰链接
+            logger.warning(f"[discover_links] css_selector='{css_selector}' 未匹配到任何元素，跳过链接发现")
+            return []
+
     links: List[str] = []
     base_host = urlparse(base_url).netloc
     for root in search_roots:
@@ -477,7 +489,7 @@ def discover_links(
             if len(links) >= budget:
                 break
             href = a.get("href", "").strip()
-            if not href or href.startswith("#") or href.startswith("mailto:"):
+            if not href or href.startswith("#") or href.startswith("mailto:") or href.startswith("javascript:"):
                 continue
             full = urljoin(base_url, href)
             if not full.startswith("http"):
@@ -489,4 +501,6 @@ def discover_links(
             links.append(full)
         if len(links) >= budget:
             break
+
+    logger.debug(f"[discover_links] 发现 {len(links)} 个链接: {links[:5]}...")
     return links

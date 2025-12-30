@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, JSON, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, JSON, Column, DateTime, ForeignKey, Integer, String
 
 from app.db.base import Base
 
@@ -11,6 +11,10 @@ class DataSource(Base):
     __tablename__ = "data_sources"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键")
+
+    # 中文说明：用于数据隔离。非管理员默认只能访问自己创建的数据源。
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="创建者用户 ID")
+
     name = Column(String(100), unique=True, nullable=False, comment="数据源名称")
     source_type = Column(
         String(50), nullable=False, comment="数据源类型，如 url/api/document/n8n"

@@ -103,7 +103,7 @@
                   :loading="!!triggerLoading[row.id]"
                   @click="onTrigger(row.id)"
                 >
-                  <el-icon><VideoPlay /></el-icon>
+                  <el-icon v-show="!triggerLoading[row.id]"><VideoPlay /></el-icon>
                 </el-button>
               </el-tooltip>
               <el-tooltip content="编辑" placement="top">
@@ -145,6 +145,19 @@
                 <el-option label="科技" value="科技" />
                 <el-option label="财经" value="财经" />
                 <el-option label="生活" value="生活" />
+                <el-option label="情感" value="情感" />
+                <el-option label="体育" value="体育" />
+                <el-option label="文化" value="文化" />
+                <el-option label="军事" value="军事" />
+                <el-option label="历史" value="历史" />
+                <el-option label="健康" value="健康" />
+                <el-option label="时尚" value="时尚" />
+                <el-option label="教育" value="教育" />
+                <el-option label="游戏" value="游戏" />
+                <el-option label="娱乐" value="娱乐" />
+                <el-option label="美食" value="美食" />
+                <el-option label="汽车" value="汽车" />
+                <el-option label="母婴" value="母婴" />
                 <el-option label="其他" value="其他" />
               </el-select>
             </el-form-item>
@@ -155,19 +168,17 @@
           <el-radio-group v-model="form.source_type" size="large">
             <el-radio-button label="url">网页 URL</el-radio-button>
             <el-radio-button label="api">API 接口</el-radio-button>
-            <el-radio-button label="document">文档 (OSS)</el-radio-button>
-            <el-radio-button label="n8n">n8n Webhook</el-radio-button>
+            <el-radio-button label="document" disabled>文档 (OSS)</el-radio-button>
+            <el-radio-button label="n8n" disabled>n8n Webhook</el-radio-button>
           </el-radio-group>
         </el-form-item>
 
         <!-- 动态配置区域 -->
         <div class="config-area">
-          <el-form-item v-if="form.source_type === 'url'" label="URL 列表" required>
+          <el-form-item v-if="form.source_type === 'url'" label="URL" required>
             <el-input
               v-model="urlInput"
-              type="textarea"
-              :rows="4"
-              placeholder="请输入目标网页地址，多个地址请换行或用逗号分隔"
+              placeholder="请输入目标网页地址，仅支持单个 URL，需以 http/https 开头"
             />
           </el-form-item>
 
@@ -353,13 +364,10 @@ const fileList = ref<UploadUserFile[]>([]);
 const editingId = ref<number | null>(null);
 const advancedConfig = ref<Record<string, unknown>>({});
 
+// 仅支持单个 URL，便于后续校验与预览
 const previewUrl = computed(() => {
   if (form.source_type !== "url") return "";
-  const urls = urlInput.value
-    .split(/[\n,]/)
-    .map((u) => u.trim())
-    .filter(Boolean);
-  return urls[0] || "";
+  return urlInput.value.trim();
 });
 
 const shouldShowAdvancedConfig = computed(() => {
@@ -448,17 +456,18 @@ const buildConfig = (): Record<string, unknown> | null => {
   }
   const cfg: Record<string, unknown> = {};
   if (form.source_type === "url") {
-    const urls = urlInput.value
-      .split(/[\n,]/) // 支持换行或逗号
-      .map((u) => u.trim())
-      .filter(Boolean);
-    if (urls.length === 0) {
-      ElMessage.warning("请填写至少一个 URL");
+    const url = urlInput.value.trim();
+    if (!url) {
+      ElMessage.warning("请填写 URL");
       return null;
     }
-    if (urls.length) {
-      cfg.urls = urls;
+    // 仅允许 http/https 单个 URL
+    const urlPattern = /^https?:\/\/[\w.-]+(?:\:[0-9]+)?(?:[\/?][^\s]*)?$/i;
+    if (!urlPattern.test(url)) {
+      ElMessage.warning("URL 不合法，请以 http/https 开头并确保格式正确");
+      return null;
     }
+    cfg.urls = [url];
   } else if (form.source_type === "api") {
     cfg.api_mode = apiMode.value || "http";
     if (apiMode.value === "http") {

@@ -81,6 +81,7 @@ export interface Article {
 
 export interface PromptTemplate {
   id: number;
+  name?: string | null;
   key: string;
   version: number;
   content: string;
@@ -422,8 +423,35 @@ export interface AuthLoginResponse {
   access_token: string;
   token_type: string;
   user: UserInfo;
+  menus?: string[];
 }
 
 export interface AuthProfileResponse {
   user: UserInfo;
+  menus?: string[];
+}
+
+export interface RoleOut {
+  id: number;
+  key: string;
+  name: string;
+  menus: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoleListResponse {
+  total: number;
+  items: RoleOut[];
+}
+
+export interface RoleCreate {
+  key: string;
+  name: string;
+  menus: string[];
+}
+
+export interface RoleUpdate {
+  name?: string;
+  menus?: string[];
 }

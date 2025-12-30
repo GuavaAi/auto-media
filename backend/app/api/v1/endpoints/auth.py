@@ -7,6 +7,7 @@ from app import deps
 from app.core.security import create_access_token, verify_password
 from app.models.user import User
 from app.schemas.user import AuthLoginRequest, AuthLoginResponse, AuthProfileResponse, UserOut
+from app.services.role_service import get_role_menus
 from app.services.user_service import ensure_default_admin
 
 router = APIRouter()
@@ -29,11 +30,18 @@ def login(payload: AuthLoginRequest, db: Session = Depends(deps.get_db)) -> Auth
     return AuthLoginResponse(
         access_token=token,
         user=UserOut.model_validate(user, from_attributes=True),
+        menus=get_role_menus(db, user.role),
     )
 
 
 @router.get("/profile", response_model=AuthProfileResponse, summary="获取当前登录用户")
-def profile(user: User = Depends(deps.require_user)) -> AuthProfileResponse:
+def profile(
+    user: User = Depends(deps.require_user),
+    db: Session = Depends(deps.get_db),
+) -> AuthProfileResponse:
     """返回当前登录用户信息"""
 
-    return AuthProfileResponse(user=UserOut.model_validate(user, from_attributes=True))
+    return AuthProfileResponse(
+        user=UserOut.model_validate(user, from_attributes=True),
+        menus=get_role_menus(db, user.role),
+    )

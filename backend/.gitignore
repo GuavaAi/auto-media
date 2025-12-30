@@ -331,4 +331,6 @@ data/
 *.zip
 *.xlsx
 .env
+celerybeat-schedule.*
 tests/
+

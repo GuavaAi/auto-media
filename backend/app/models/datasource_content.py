@@ -12,6 +12,10 @@ class DataSourceContent(Base):
     __tablename__ = "data_source_contents"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键")
+
+    # 中文说明：用于数据隔离。非管理员默认只能查看自己创建/入库的抓取记录。
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="创建者用户 ID")
+
     datasource_id = Column(Integer, ForeignKey("data_sources.id"), nullable=False, index=True, comment="关联数据源 ID")
     source_type = Column(String(50), nullable=False, comment="数据源类型，冗余便于查询")
     url = Column(String(2048), nullable=True, comment="原始 URL（用于增量判重与回溯）")

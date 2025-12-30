@@ -59,28 +59,32 @@
             <el-icon><DocumentCopy /></el-icon>
             <span>抓取记录</span>
           </el-menu-item>
-          <el-menu-item index="/datasources">
+          <el-menu-item index="/datasources" v-if="can('datasources')">
             <el-icon><Connection /></el-icon>
             <span>数据源管理</span>
           </el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="group-system">
+        <el-sub-menu index="group-system" v-if="showSystemGroup">
           <template #title>
             <el-icon><Collection /></el-icon>
             <span>系统配置</span>
           </template>
-          <el-menu-item index="/prompt-templates">
+          <el-menu-item index="/prompt-templates" v-if="can('prompt-templates')">
             <el-icon><Collection /></el-icon>
             <span>模板管理</span>
           </el-menu-item>
-          <el-menu-item index="/api-keys">
+          <el-menu-item index="/api-keys" v-if="can('api-keys')">
             <el-icon><Key /></el-icon>
             <span>API Key 池</span>
           </el-menu-item>
-          <el-menu-item index="/users" v-if="isAdmin">
+          <el-menu-item index="/users" v-if="can('users')">
             <el-icon><User /></el-icon>
             <span>用户管理</span>
+          </el-menu-item>
+          <el-menu-item index="/roles" v-if="can('roles')">
+            <el-icon><User /></el-icon>
+            <span>角色管理</span>
           </el-menu-item>
         </el-sub-menu>
       </el-menu>
@@ -103,7 +107,8 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item>{{ currentUser?.role === "admin" ? "管理员" : "成员" }}</el-dropdown-item>
-                <el-dropdown-item divided @click="goUsers" v-if="isAdmin">用户管理</el-dropdown-item>
+                <el-dropdown-item divided @click="goUsers" v-if="can('users')">用户管理</el-dropdown-item>
+                <el-dropdown-item divided @click="goRoles" v-if="can('roles')">角色管理</el-dropdown-item>
                 <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -161,6 +166,10 @@ const goUsers = () => {
   router.push("/users");
 };
 
+const goRoles = () => {
+  router.push("/roles");
+};
+
 const handleLogout = () => {
   ElMessageBox.confirm("确定要退出登录吗？", "提示", {
     type: "warning",
@@ -187,6 +196,7 @@ const activeMenu = computed(() => {
   if (route.path.startsWith("/prompt-templates")) return "/prompt-templates";
   if (route.path.startsWith("/api-keys")) return "/api-keys";
   if (route.path.startsWith("/users")) return "/users";
+  if (route.path.startsWith("/roles")) return "/roles";
   return "/generate";
 });
 
@@ -209,7 +219,8 @@ const openedMenus = computed(() => {
   if (
     route.path.startsWith("/prompt-templates") ||
     route.path.startsWith("/api-keys") ||
-    route.path.startsWith("/users")
+    route.path.startsWith("/users") ||
+    route.path.startsWith("/roles")
   ) {
     return ["group-system"];
   }
@@ -231,6 +242,7 @@ const currentPageTitle = computed(() => {
     "/prompt-templates": "Prompt 模板",
     "/api-keys": "API Key 池",
     "/users": "用户管理",
+    "/roles": "角色管理",
   };
   // 简单匹配前缀
   for (const key in map) {
@@ -241,7 +253,12 @@ const currentPageTitle = computed(() => {
 
 const currentUser = computed(() => authStore.user);
 const displayName = computed(() => authStore.displayName);
-const isAdmin = computed(() => authStore.isAdmin);
+
+const can = (menuKey: string) => authStore.isAdmin || authStore.hasMenu(menuKey);
+
+const showSystemGroup = computed(() =>
+  can("prompt-templates") || can("api-keys") || can("users") || can("roles")
+);
 </script>
 
 <style scoped>
@@ -356,6 +373,33 @@ const isAdmin = computed(() => authStore.isAdmin);
   font-size: 18px;
   font-weight: 600;
   color: #1f2937;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-entry {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+  color: #606266;
+}
+
+.user-entry:hover {
+  background-color: #f3f4f6;
+  color: #303133;
+}
+
+.user-name {
+  margin-left: 8px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .main-content {

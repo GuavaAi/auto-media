@@ -11,7 +11,12 @@ celery_app = Celery(
     "auto_media",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.daily_hotspots", "app.tasks.publish", "app.tasks.morning_brief"],
+    include=[
+        "app.tasks.daily_hotspots",
+        "app.tasks.publish",
+        "app.tasks.morning_brief",
+        "app.tasks.datasource",  # 数据源定时扫描与触发
+    ],
 )
 
 celery_app.conf.update(
@@ -24,6 +29,9 @@ if settings.CELERY_ALWAYS_EAGER:
         task_always_eager=True,
         task_eager_propagates=True,
     )
+
+# 初始化 beat_schedule，后续按条件增补
+celery_app.conf.beat_schedule = {}
 
 # Beat 定时任务配置（阶段2：每天跑批生成热点榜单）
 if settings.DAILY_HOTSPOT_BEAT_ENABLED:
@@ -63,5 +71,10 @@ if settings.DAILY_HOTSPOT_BEAT_ENABLED:
                 ),
                 "options": {"queue": "default"},
             }
-else:
-    celery_app.conf.beat_schedule = {}
+
+# 数据源定时扫描任务：每 1 分钟检查一次到期的数据源并触发抓取
+celery_app.conf.beat_schedule["scan-datasource-schedule"] = {
+    "task": "app.tasks.datasource.scan_and_trigger_datasources",
+    "schedule": crontab(minute="*/1"),
+    "options": {"queue": "default"},
+}

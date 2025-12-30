@@ -87,11 +87,17 @@ class FirecrawlService:
         results = []
         raw_data = data.get("data", {})
         # v2 search response structure: { data: { web: [...], news: [...] } }
-        # 我们这里主要合并所有 sources 的结果
+        # 兼容部分 mock/旧结构：data 也可能直接是 list
         
         items = []
-        for src in (sources or ["web"]):
-            items.extend(raw_data.get(src, []))
+
+        if isinstance(raw_data, list):
+            items = raw_data
+        elif isinstance(raw_data, dict):
+            for src in (sources or ["web"]):
+                items.extend(raw_data.get(src, []))
+        else:
+            items = []
 
         for it in items:
             # 尽可能提取有效信息

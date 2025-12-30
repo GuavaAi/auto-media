@@ -7,20 +7,35 @@ from app import deps
 from app.models.article import Article
 from app.models.datasource_content import DataSourceContent
 from app.models.datasource import DataSource
+from app.models.user import User
 from app.schemas.dashboard import DashboardRecentResponse, RecentArticle, RecentCrawlRecord, StatsResponse
+from app.services.user_service import is_admin
 
 router = APIRouter()
 
 @router.get("/stats", response_model=StatsResponse, summary="首页统计数据")
-def get_stats(db: Session = Depends(deps.get_db)):
+def get_stats(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+):
     now = datetime.now()
     today_start = datetime.combine(now.date(), time.min)
 
-    total_articles = db.query(func.count(Article.id)).scalar() or 0
-    today_articles = db.query(func.count(Article.id)).filter(Article.created_at >= today_start).scalar() or 0
+    art_q = db.query(Article)
+    crawl_q = db.query(DataSourceContent)
+    if not is_admin(current_user):
+        art_q = art_q.filter(Article.user_id == current_user.id)
+        crawl_q = crawl_q.filter(DataSourceContent.user_id == current_user.id)
 
-    total_crawl = db.query(func.count(DataSourceContent.id)).scalar() or 0
-    today_crawl = db.query(func.count(DataSourceContent.id)).filter(DataSourceContent.fetched_at >= today_start).scalar() or 0
+    total_articles = art_q.with_entities(func.count(Article.id)).scalar() or 0
+    today_articles = (
+        art_q.with_entities(func.count(Article.id)).filter(Article.created_at >= today_start).scalar() or 0
+    )
+
+    total_crawl = crawl_q.with_entities(func.count(DataSourceContent.id)).scalar() or 0
+    today_crawl = (
+        crawl_q.with_entities(func.count(DataSourceContent.id)).filter(DataSourceContent.fetched_at >= today_start).scalar() or 0
+    )
 
     total_datasources = db.query(func.count(DataSource.id)).scalar() or 0
 
@@ -37,14 +52,13 @@ def get_stats(db: Session = Depends(deps.get_db)):
 def get_recent(
     limit: int = Query(5, ge=1, le=50, description="返回条数"),
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> DashboardRecentResponse:
     # 最近文章
-    art_rows = (
-        db.query(Article)
-        .order_by(Article.created_at.desc(), Article.id.desc())
-        .limit(limit)
-        .all()
-    )
+    art_q = db.query(Article)
+    if not is_admin(current_user):
+        art_q = art_q.filter(Article.user_id == current_user.id)
+    art_rows = art_q.order_by(Article.created_at.desc(), Article.id.desc()).limit(limit).all()
     recent_articles = [
         RecentArticle(
             id=a.id,
@@ -59,12 +73,10 @@ def get_recent(
     ]
 
     # 最近抓取记录 + datasource_name
-    rec_rows = (
-        db.query(DataSourceContent)
-        .order_by(DataSourceContent.fetched_at.desc(), DataSourceContent.id.desc())
-        .limit(limit)
-        .all()
-    )
+    rec_q = db.query(DataSourceContent)
+    if not is_admin(current_user):
+        rec_q = rec_q.filter(DataSourceContent.user_id == current_user.id)
+    rec_rows = rec_q.order_by(DataSourceContent.fetched_at.desc(), DataSourceContent.id.desc()).limit(limit).all()
     ds_ids = list({r.datasource_id for r in rec_rows if r.datasource_id is not None})
     name_map: dict[int, str] = {}
     if ds_ids:

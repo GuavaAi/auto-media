@@ -5,23 +5,27 @@ import { clearToken, getToken, setToken } from "@/utils/token";
 
 interface AuthState {
   user: UserInfo | null;
+  menus: string[];
   loadingProfile: boolean;
 }
 
 export const useAuthStore = defineStore("auth", {
   state: (): AuthState => ({
     user: null,
+    menus: [],
     loadingProfile: false,
   }),
   getters: {
     isAdmin: (state) => (state.user?.role || "").toLowerCase() === "admin",
     displayName: (state) => state.user?.full_name || state.user?.username || "",
+    hasMenu: (state) => (menuKey: string) => (state.menus || []).includes(menuKey),
   },
   actions: {
     async login(payload: AuthLoginRequest) {
       const resp = await loginApi(payload);
       setToken(resp.access_token);
       this.user = resp.user;
+      this.menus = resp.menus || [];
       return resp.user;
     },
     async loadProfile(force = false) {
@@ -40,10 +44,12 @@ export const useAuthStore = defineStore("auth", {
       try {
         const resp = await fetchProfile();
         this.user = resp.user;
+        this.menus = resp.menus || [];
         return this.user;
       } catch (error) {
         clearToken();
         this.user = null;
+        this.menus = [];
         throw error;
       } finally {
         this.loadingProfile = false;
@@ -52,6 +58,7 @@ export const useAuthStore = defineStore("auth", {
     logout() {
       clearToken();
       this.user = null;
+      this.menus = [];
     },
   },
 });

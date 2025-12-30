@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app import deps
 from app.models.article import Article
 from app.models.prompt_template import PromptTemplate
+from app.models.user import User
 from app.schemas.article import (
     ArticleAiEditRequest,
     ArticleAiEditResponse,
@@ -24,8 +25,9 @@ from app.schemas.prompt_template import (
 )
 from app.services.generation import generate_article
 from app.services.llm_provider import get_provider
+from app.services.user_service import is_admin
 from app.services.prompt_templates import (
-    create_new_template_version,
+    create_template,
     delete_templates_by_key,
     get_template,
     is_protected_template_key,
@@ -40,27 +42,42 @@ router = APIRouter()
     summary="生成公众号软文（Markdown + HTML）",
 )
 def generate_article_endpoint(
-    payload: GenerationRequest, db: Session = Depends(deps.get_db)
+    payload: GenerationRequest,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> ArticleOut:
     """
     生成软文并入库，返回 Markdown 与 HTML，便于复制到公众号后台。
     """
     try:
-        return generate_article(db, payload)
+        return generate_article(db, payload, user_id=current_user.id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/articles", response_model=List[ArticleOut], summary="历史生成列表")
-def list_articles(db: Session = Depends(deps.get_db)) -> list[Article]:
+def list_articles(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> list[Article]:
     """查看已生成的文章，按时间倒序"""
-    return db.query(Article).order_by(Article.id.desc()).all()
+    q = db.query(Article)
+    if not is_admin(current_user):
+        q = q.filter(Article.user_id == current_user.id)
+    return q.order_by(Article.id.desc()).all()
 
 
 @router.get("/articles/{article_id}", response_model=ArticleOut, summary="查看单篇文章")
-def get_article(article_id: int, db: Session = Depends(deps.get_db)) -> Article:
+def get_article(
+    article_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> Article:
     """获取单篇文章内容，便于前端复制/预览"""
-    article = db.query(Article).filter(Article.id == article_id).first()
+    q = db.query(Article).filter(Article.id == article_id)
+    if not is_admin(current_user):
+        q = q.filter(Article.user_id == current_user.id)
+    article = q.first()
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
     return article
@@ -75,8 +92,12 @@ def update_article(
     article_id: int,
     payload: ArticleUpdate,
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> Article:
-    article = db.query(Article).filter(Article.id == article_id).first()
+    q = db.query(Article).filter(Article.id == article_id)
+    if not is_admin(current_user):
+        q = q.filter(Article.user_id == current_user.id)
+    article = q.first()
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -106,8 +127,15 @@ def update_article(
     response_model=DeleteResponse,
     summary="删除文章",
 )
-def delete_article(article_id: int, db: Session = Depends(deps.get_db)) -> DeleteResponse:
-    article = db.query(Article).filter(Article.id == article_id).first()
+def delete_article(
+    article_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> DeleteResponse:
+    q = db.query(Article).filter(Article.id == article_id)
+    if not is_admin(current_user):
+        q = q.filter(Article.user_id == current_user.id)
+    article = q.first()
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
     db.delete(article)
@@ -124,8 +152,12 @@ def ai_edit_article(
     article_id: int,
     payload: ArticleAiEditRequest,
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> ArticleAiEditResponse:
-    article = db.query(Article).filter(Article.id == article_id).first()
+    q = db.query(Article).filter(Article.id == article_id)
+    if not is_admin(current_user):
+        q = q.filter(Article.user_id == current_user.id)
+    article = q.first()
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -197,12 +229,27 @@ def ai_edit_article(
 )
 def list_prompt_templates(
     key: Optional[str] = None,
+    name: Optional[str] = None,
+    q: Optional[str] = None,
     db: Session = Depends(deps.get_db),
+    _perm=Depends(deps.require_menu("prompt-templates")),
 ) -> PromptTemplateListResponse:
-    q = db.query(PromptTemplate)
+    search_q = q
+    query = db.query(PromptTemplate)
     if key:
-        q = q.filter(PromptTemplate.key == key)
-    rows = q.order_by(PromptTemplate.key.asc(), PromptTemplate.version.desc(), PromptTemplate.id.desc()).all()
+        query = query.filter(PromptTemplate.key == key)
+    if name:
+        query = query.filter(PromptTemplate.name.contains(name))
+    if search_q:
+        query = query.filter(
+            (PromptTemplate.key.contains(search_q)) | (PromptTemplate.name.contains(search_q))
+        )
+    rows = query.order_by(
+        PromptTemplate.name.asc(),
+        PromptTemplate.key.asc(),
+        PromptTemplate.version.desc(),
+        PromptTemplate.id.desc(),
+    ).all()
     return PromptTemplateListResponse(items=rows)
 
 
@@ -215,6 +262,7 @@ def get_prompt_template(
     key: str,
     version: Optional[int] = None,
     db: Session = Depends(deps.get_db),
+    _perm=Depends(deps.require_menu("prompt-templates")),
 ) -> PromptTemplateGetResponse:
     tpl = get_template(db, key=key, version=version)
     if not tpl:
@@ -230,8 +278,9 @@ def get_prompt_template(
 def create_prompt_template(
     payload: PromptTemplateCreate,
     db: Session = Depends(deps.get_db),
+    _perm=Depends(deps.require_menu("prompt-templates")),
 ) -> PromptTemplateCreateResponse:
-    tpl = create_new_template_version(db, key=payload.key, content=payload.content)
+    tpl = create_template(db, key=payload.key, name=payload.name, content=payload.content)
     db.commit()
     db.refresh(tpl)
     return PromptTemplateCreateResponse(item=tpl)
@@ -245,6 +294,7 @@ def create_prompt_template(
 def delete_prompt_template(
     key: str,
     db: Session = Depends(deps.get_db),
+    _perm=Depends(deps.require_menu("prompt-templates")),
 ) -> DeleteResponse:
     if is_protected_template_key(key):
         raise HTTPException(status_code=403, detail="该模板为系统默认/内置模板，不允许删除")

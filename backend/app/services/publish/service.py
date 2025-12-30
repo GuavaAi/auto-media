@@ -22,6 +22,8 @@ def _retry_delay_seconds(attempt: int) -> int:
 def create_draft_task(
     db: Session,
     *,
+    user_id: int | None = None,
+    is_admin: bool = False,
     account_id: int,
     article_id: int,
     thumb_image_url: str,
@@ -33,14 +35,25 @@ def create_draft_task(
     if not account or not account.is_active:
         raise PublishError("account_not_found", "发布账号不存在或未启用")
 
+    # 中文说明：数据隔离——非管理员只能使用自己的发布账号。
+    if (not is_admin) and user_id is not None:
+        if getattr(account, "user_id", None) not in {None, user_id}:
+            raise PublishError("forbidden", "无权限使用该发布账号")
+
     article = db.query(Article).filter(Article.id == article_id).first()
     if not article:
         raise PublishError("article_not_found", "文章不存在")
+
+    # 中文说明：数据隔离——非管理员只能发布自己的文章。
+    if (not is_admin) and user_id is not None:
+        if getattr(article, "user_id", None) not in {None, user_id}:
+            raise PublishError("forbidden", "无权限发布该文章")
 
     provider = registry.get(account.provider)
 
     now = datetime.now()
     task = PublishTask(
+        user_id=user_id,
         provider=account.provider,
         action="draft_create",
         account_id=account.id,
@@ -103,6 +116,8 @@ def create_draft_task(
 def enqueue_draft_task(
     db: Session,
     *,
+    user_id: int | None = None,
+    is_admin: bool = False,
     account_id: int,
     article_id: int,
     thumb_image_url: str,
@@ -121,12 +136,21 @@ def enqueue_draft_task(
     if not account or not account.is_active:
         raise PublishError("account_not_found", "发布账号不存在或未启用")
 
+    if (not is_admin) and user_id is not None:
+        if getattr(account, "user_id", None) not in {None, user_id}:
+            raise PublishError("forbidden", "无权限使用该发布账号")
+
     article = db.query(Article).filter(Article.id == article_id).first()
     if not article:
         raise PublishError("article_not_found", "文章不存在")
 
+    if (not is_admin) and user_id is not None:
+        if getattr(article, "user_id", None) not in {None, user_id}:
+            raise PublishError("forbidden", "无权限发布该文章")
+
     now = datetime.now()
     task = PublishTask(
+        user_id=user_id,
         provider=account.provider,
         action="draft_create",
         account_id=account.id,
@@ -180,8 +204,11 @@ def enqueue_draft_task(
     return task
 
 
-def retry_task(db: Session, *, task_id: int) -> PublishTask:
-    task = db.query(PublishTask).filter(PublishTask.id == task_id).first()
+def retry_task(db: Session, *, task_id: int, user_id: int | None = None, is_admin: bool = False) -> PublishTask:
+    q = db.query(PublishTask).filter(PublishTask.id == task_id)
+    if (not is_admin) and user_id is not None:
+        q = q.filter(PublishTask.user_id == user_id)
+    task = q.first()
     if not task:
         raise PublishError("task_not_found", "任务不存在")
     if task.status in {"success"}:

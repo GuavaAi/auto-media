@@ -184,10 +184,10 @@
                     >
                       <el-option label="默认模板" value="" />
                       <el-option
-                        v-for="k in templateKeys"
-                        :key="k"
-                        :label="k"
-                        :value="k"
+                        v-for="it in templateOptions"
+                        :key="it.key"
+                        :label="it.label"
+                        :value="it.key"
                       />
                     </el-select>
                   </el-form-item>
@@ -513,10 +513,28 @@ const filteredMaterialItems = computed(() => {
   if (!kw) return materialPackDetailItems.value;
   return materialPackDetailItems.value.filter((it) => (it.text || "").includes(kw));
 });
-const templateKeys = computed(() => {
-  const set = new Set<string>();
-  templates.value.forEach((t) => set.add(t.key));
-  return Array.from(set).sort();
+const BUILTIN_TEMPLATE_LABELS = new Map<string, string>([
+  ["copywriting.basic.v1", "通用软文｜痛点-方案-证据-步骤-CTA"],
+  ["copywriting.story.v1", "故事型软文｜场景故事+反转+干货"],
+  ["copywriting.product.v1", "工具/产品软文｜对比测评+上手教程"],
+  ["copywriting.hotspot.v1", "热点借势软文｜事件解读+观点+建议"],
+]);
+
+const getTemplateDisplayName = (key: string) => {
+  const latest = templates.value
+    .filter((t) => t.key === key)
+    .slice()
+    .sort((a, b) => b.version - a.version)[0];
+  return (latest?.name || BUILTIN_TEMPLATE_LABELS.get(key) || "未命名模板").trim();
+};
+
+const templateOptions = computed(() => {
+  const keys = Array.from(new Set<string>(templates.value.map((t) => t.key)))
+    .filter((k) => k && k !== "default_article")
+    .sort();
+  return keys
+    .map((key) => ({ key, label: getTemplateDisplayName(key) }))
+    .sort((a, b) => (a.label || "").localeCompare(b.label || "") || a.key.localeCompare(b.key));
 });
 const templateVersions = computed(() => {
   const key = form.template_key;

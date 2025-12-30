@@ -11,6 +11,7 @@ class PromptTemplate(Base):
     __tablename__ = "prompt_templates"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键")
+    name = Column(String(200), nullable=True, comment="模板名称（面向用户展示）")
     key = Column(String(64), nullable=False, comment="模板标识")
     version = Column(Integer, nullable=False, default=1, comment="模板版本")
     content = Column(Text, nullable=False, comment="模板内容（支持 {topic}/{outline}/{keywords}/{tone}/{length}/{summary_hint}/{sources} 占位）")

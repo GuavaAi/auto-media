@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Optional
 
 from sqlalchemy import desc
@@ -101,13 +102,22 @@ def delete_templates_by_key(db: Session, key: str) -> int:
     return int(deleted or 0)
 
 
-def create_new_template_version(db: Session, key: str, content: str) -> PromptTemplate:
+def generate_blackbox_template_key() -> str:
+    # 中文说明：key 作为内部标识，不对用户暴露；前端仅展示 name。
+    return f"tpl_{uuid.uuid4().hex[:24]}"
+
+
+def create_new_template_version(db: Session, key: str, content: str, name: str | None = None) -> PromptTemplate:
     """创建某个模板 key 的新版本（version 自增）。"""
 
     latest = get_latest_template(db, key)
     next_version = int(latest.version) + 1 if latest else 1
 
+    # 中文说明：默认继承最新版本的 name；若显式传入 name，则更新展示名（仍属于同一个 key）。
+    final_name = name if name is not None else (latest.name if latest else None)
+
     tpl = PromptTemplate(
+        name=final_name,
         key=key,
         version=next_version,
         content=content,
@@ -115,3 +125,11 @@ def create_new_template_version(db: Session, key: str, content: str) -> PromptTe
     db.add(tpl)
     db.flush()
     return tpl
+
+
+def create_template(db: Session, content: str, name: str | None = None, key: str | None = None) -> PromptTemplate:
+    # 中文说明：
+    # - key 为空：创建新模板（version=1，后端生成黑盒 key）
+    # - key 不为空：创建新版本（version+1）
+    final_key = (key or "").strip() or generate_blackbox_template_key()
+    return create_new_template_version(db, key=final_key, content=content, name=name)

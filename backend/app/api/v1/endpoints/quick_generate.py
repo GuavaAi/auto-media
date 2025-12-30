@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app import deps
 from app.models.event_cluster import EventCluster
+from app.models.user import User
 from app.schemas.article import ArticleOut, GenerationRequest
 from app.services.generation import generate_article
 
@@ -17,6 +18,7 @@ router = APIRouter()
 def quick_generate_from_event(
     event_id: int,
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> ArticleOut:
     """
     根据热点事件 ID，自动组装素材与 Prompt，一键生成文章草稿。
@@ -38,7 +40,7 @@ def quick_generate_from_event(
     )
     
     try:
-        return generate_article(db, req)
+        return generate_article(db, req, user_id=current_user.id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -51,6 +53,7 @@ def quick_generate_from_event(
 def quick_generate_from_topic(
     topic: str = Body(..., embed=True),
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> ArticleOut:
     """
     根据自定义主题，实时调用 Firecrawl 搜索素材并生成草稿。
@@ -69,7 +72,7 @@ def quick_generate_from_topic(
 
     try:
         # 这个过程可能会比较慢 (Firecrawl search + LLM generate)，建议前端做好 Loading
-        return generate_article(db, req)
+        return generate_article(db, req, user_id=current_user.id)
     except RuntimeError as exc:
         # Firecrawl 错误
         raise HTTPException(status_code=502, detail=f"搜索服务暂不可用: {exc}")

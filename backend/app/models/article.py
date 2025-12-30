@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 
 from app.db.base import Base
 
@@ -11,6 +11,10 @@ class Article(Base):
     __tablename__ = "articles"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键")
+
+    # 中文说明：用于数据隔离。非管理员默认只能访问自己创建的数据。
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="创建者用户 ID")
+
     title = Column(String(200), nullable=False, comment="标题/主题")
     summary = Column(String(500), nullable=True, comment="摘要/提示")
     content_md = Column(Text, nullable=False, comment="Markdown 格式内容")

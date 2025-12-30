@@ -55,13 +55,18 @@ def _load_source_snippets(
     return snippets, found_ids
 
 
-def _load_material_items(db: Session, req: GenerationRequest) -> list[MaterialItem]:
+def _load_material_items(db: Session, req: GenerationRequest, *, user_id: int | None = None) -> list[MaterialItem]:
     if not req.material_pack_id:
         return []
 
     pack = db.query(MaterialPack).filter(MaterialPack.id == req.material_pack_id).first()
     if not pack:
         raise ValueError("素材包不存在")
+
+    # 中文说明：数据隔离——非管理员只能使用自己的素材包生成。
+    # user_id 为 None 时表示不做所有权限制（例如：单测或后台任务）。
+    if user_id is not None and getattr(pack, "user_id", None) not in {None, user_id}:
+        raise ValueError("无权限访问该素材包")
 
     q = db.query(MaterialItem).filter(MaterialItem.pack_id == req.material_pack_id)
     if req.material_item_ids:
@@ -402,14 +407,14 @@ def _build_materials_block_layered(
     return "\n\n".join(p for p in parts if p.strip())
 
 
-def generate_article(db: Session, req: GenerationRequest) -> ArticleOut:
+def generate_article(db: Session, req: GenerationRequest, *, user_id: int | None = None) -> ArticleOut:
     """软文生成主流程：构建 Prompt -> 调用模型 -> 持久化"""
     source_snippets, found_ids = _load_source_snippets(db, req.sources)
 
     # 先初始化 provider：用于长素材压缩 + 最终生成（避免重复构建/重复选 key）
     provider = get_provider(req.provider, db=db)
 
-    material_items = _load_material_items(db, req)
+    material_items = _load_material_items(db, req, user_id=user_id)
     
     # 支持从热点事件直接加载素材 (Quick Generate)
     if req.source_event_id:
@@ -521,6 +526,7 @@ def generate_article(db: Session, req: GenerationRequest) -> ArticleOut:
     llm_model = get_provider_model_name(req.provider)
 
     article = Article(
+        user_id=user_id,
         title=req.topic,
         summary=summary,
         content_md=content_md,

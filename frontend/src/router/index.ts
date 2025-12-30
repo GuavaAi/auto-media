@@ -63,16 +63,19 @@ const mainChildren: RouteRecordRaw[] = [
     path: "datasources",
     name: "DataSources",
     component: () => import("@/views/DataSourcePage.vue"),
+    meta: { requiresMenuKey: "datasources" },
   },
   {
     path: "prompt-templates",
     name: "PromptTemplates",
     component: () => import("@/views/PromptTemplatePage.vue"),
+    meta: { requiresMenuKey: "prompt-templates" },
   },
   {
     path: "api-keys",
     name: "ApiKeys",
     component: () => import("@/views/ApiKeyPoolPage.vue"),
+    meta: { requiresMenuKey: "api-keys" },
   },
   {
     path: "publish",
@@ -100,7 +103,13 @@ const mainChildren: RouteRecordRaw[] = [
     path: "users",
     name: "Users",
     component: () => import("@/views/UserManagePage.vue"),
-    meta: { requiresAdmin: true },
+    meta: { requiresMenuKey: "users" },
+  },
+  {
+    path: "roles",
+    name: "Roles",
+    component: () => import("@/views/RoleManagePage.vue"),
+    meta: { requiresMenuKey: "roles" },
   },
 ];
 
@@ -161,7 +170,13 @@ router.beforeEach(async (to, from, next) => {
     });
   }
 
-  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+  const requiredMenuKey = (to.meta as any)?.requiresMenuKey as string | undefined;
+  if (requiredMenuKey) {
+    if (!authStore.hasMenu(requiredMenuKey) && !authStore.isAdmin) {
+      ElMessage.warning("无权限访问");
+      return next(from.path && from.path !== "/login" ? from.fullPath : "/dashboard");
+    }
+  } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
     ElMessage.warning("仅管理员可访问");
     return next(from.path && from.path !== "/login" ? from.fullPath : "/dashboard");
   }

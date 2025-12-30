@@ -16,6 +16,7 @@ from app.models.datasource import DataSource
 from app.models.datasource_content import DataSourceContent
 from app.models.material_pack import MaterialPack
 from app.models.material_item import MaterialItem
+from app.models.user import User
 from app.schemas.material import (
     AliyunUnifiedSearchIngestRequest,
     AliyunUnifiedSearchIngestResponse,
@@ -32,6 +33,7 @@ from app.schemas.material import (
     MaterialPackOut,
 )
 from app.services.api_key_pool import pick_api_key
+from app.services.user_service import is_admin
 
 router = APIRouter()
 
@@ -199,11 +201,19 @@ def _aliyun_iqs_call_via_sdk(*, query: str, engine_type: str, time_range: str, c
 
 
 @router.post("/packs", response_model=MaterialPackOut, summary="创建素材包")
-def create_pack(payload: MaterialPackCreate, db: Session = Depends(deps.get_db)) -> MaterialPackOut:
+def create_pack(
+    payload: MaterialPackCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> MaterialPackOut:
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="素材包名称不能为空")
 
-    pack = MaterialPack(name=payload.name.strip(), description=payload.description)
+    pack = MaterialPack(
+        user_id=current_user.id,
+        name=payload.name.strip(),
+        description=payload.description,
+    )
     db.add(pack)
     db.commit()
     db.refresh(pack)
@@ -218,6 +228,7 @@ def create_pack(payload: MaterialPackCreate, db: Session = Depends(deps.get_db))
 def firecrawl_search_ingest(
     payload: FirecrawlSearchIngestRequest,
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> FirecrawlSearchIngestResponse:
     query = (payload.query or "").strip()
     if not query:
@@ -368,6 +379,7 @@ def firecrawl_search_ingest(
             status_code_int = None
 
         rec = DataSourceContent(
+            user_id=current_user.id,
             datasource_id=ds.id,
             source_type="url",
             title=title or url,
@@ -425,6 +437,7 @@ def firecrawl_search_ingest(
 def aliyun_unified_search_ingest(
     payload: AliyunUnifiedSearchIngestRequest,
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> AliyunUnifiedSearchIngestResponse:
     query = (payload.query or "").strip()
     if not query:
@@ -554,6 +567,7 @@ def aliyun_unified_search_ingest(
                 continue
 
         rec = DataSourceContent(
+            user_id=current_user.id,
             datasource_id=ds.id,
             source_type="url",
             title=title or url,
@@ -612,8 +626,11 @@ def list_packs(
     limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> MaterialPackListResponse:
     q = db.query(MaterialPack)
+    if not is_admin(current_user):
+        q = q.filter(MaterialPack.user_id == current_user.id)
     if keyword:
         kw = f"%{keyword.strip()}%"
         q = q.filter((MaterialPack.name.like(kw)) | (MaterialPack.description.like(kw)))
@@ -624,14 +641,22 @@ def list_packs(
 
 
 @router.get("/packs/{pack_id}", response_model=MaterialPackDetailResponse, summary="素材包详情")
-def get_pack(pack_id: int, db: Session = Depends(deps.get_db)) -> MaterialPackDetailResponse:
-    pack = db.query(MaterialPack).filter(MaterialPack.id == pack_id).first()
+def get_pack(
+    pack_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> MaterialPackDetailResponse:
+    q = db.query(MaterialPack).filter(MaterialPack.id == pack_id)
+    if not is_admin(current_user):
+        q = q.filter(MaterialPack.user_id == current_user.id)
+    pack = q.first()
     if not pack:
         raise HTTPException(status_code=404, detail="素材包不存在")
 
     items = (
         db.query(MaterialItem)
         .filter(MaterialItem.pack_id == pack_id)
+        .filter(MaterialItem.user_id == pack.user_id)
         .order_by(desc(MaterialItem.created_at), desc(MaterialItem.id))
         .all()
     )
@@ -639,8 +664,15 @@ def get_pack(pack_id: int, db: Session = Depends(deps.get_db)) -> MaterialPackDe
 
 
 @router.delete("/packs/{pack_id}", summary="删除素材包")
-def delete_pack(pack_id: int, db: Session = Depends(deps.get_db)) -> dict:
-    pack = db.query(MaterialPack).filter(MaterialPack.id == pack_id).first()
+def delete_pack(
+    pack_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> dict:
+    q = db.query(MaterialPack).filter(MaterialPack.id == pack_id)
+    if not is_admin(current_user):
+        q = q.filter(MaterialPack.user_id == current_user.id)
+    pack = q.first()
     if not pack:
         raise HTTPException(status_code=404, detail="素材包不存在")
 
@@ -665,8 +697,12 @@ def batch_create_items(
     pack_id: int,
     payload: MaterialItemBatchCreateRequest,
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> list[MaterialItemOut]:
-    pack = db.query(MaterialPack).filter(MaterialPack.id == pack_id).first()
+    q = db.query(MaterialPack).filter(MaterialPack.id == pack_id)
+    if not is_admin(current_user):
+        q = q.filter(MaterialPack.user_id == current_user.id)
+    pack = q.first()
     if not pack:
         raise HTTPException(status_code=404, detail="素材包不存在")
 
@@ -675,6 +711,7 @@ def batch_create_items(
         if not (it.text or "").strip():
             continue
         item = MaterialItem(
+            user_id=pack.user_id,
             pack_id=pack_id,
             item_type=(it.item_type or "").strip().lower(),
             text=_norm_text(it.text),
@@ -694,8 +731,16 @@ def batch_create_items(
 
 
 @router.patch("/items/{item_id}", response_model=MaterialItemOut, summary="更新素材条目")
-def update_item(item_id: int, payload: MaterialItemUpdate, db: Session = Depends(deps.get_db)) -> MaterialItemOut:
-    item = db.query(MaterialItem).filter(MaterialItem.id == item_id).first()
+def update_item(
+    item_id: int,
+    payload: MaterialItemUpdate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> MaterialItemOut:
+    q = db.query(MaterialItem).filter(MaterialItem.id == item_id)
+    if not is_admin(current_user):
+        q = q.filter(MaterialItem.user_id == current_user.id)
+    item = q.first()
     if not item:
         raise HTTPException(status_code=404, detail="素材条目不存在")
 
@@ -716,8 +761,15 @@ def update_item(item_id: int, payload: MaterialItemUpdate, db: Session = Depends
 
 
 @router.delete("/items/{item_id}", summary="删除素材条目")
-def delete_item(item_id: int, db: Session = Depends(deps.get_db)) -> dict:
-    item = db.query(MaterialItem).filter(MaterialItem.id == item_id).first()
+def delete_item(
+    item_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> dict:
+    q = db.query(MaterialItem).filter(MaterialItem.id == item_id)
+    if not is_admin(current_user):
+        q = q.filter(MaterialItem.user_id == current_user.id)
+    item = q.first()
     if not item:
         raise HTTPException(status_code=404, detail="素材条目不存在")
     db.delete(item)
@@ -733,8 +785,11 @@ def search_items(
     limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
 ) -> MaterialItemSearchResponse:
     q = db.query(MaterialItem)
+    if not is_admin(current_user):
+        q = q.filter(MaterialItem.user_id == current_user.id)
     if pack_id is not None:
         q = q.filter(MaterialItem.pack_id == pack_id)
     if item_type:
@@ -749,14 +804,22 @@ def search_items(
 
 
 @router.post("/packs/{pack_id}/dedupe", response_model=DedupeResponse, summary="素材包去重")
-def dedupe_pack(pack_id: int, db: Session = Depends(deps.get_db)) -> DedupeResponse:
-    pack = db.query(MaterialPack).filter(MaterialPack.id == pack_id).first()
+def dedupe_pack(
+    pack_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> DedupeResponse:
+    q = db.query(MaterialPack).filter(MaterialPack.id == pack_id)
+    if not is_admin(current_user):
+        q = q.filter(MaterialPack.user_id == current_user.id)
+    pack = q.first()
     if not pack:
         raise HTTPException(status_code=404, detail="素材包不存在")
 
     rows = (
         db.query(MaterialItem)
         .filter(MaterialItem.pack_id == pack_id)
+        .filter(MaterialItem.user_id == pack.user_id)
         .order_by(desc(MaterialItem.created_at), desc(MaterialItem.id))
         .all()
     )

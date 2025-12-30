@@ -12,6 +12,7 @@ from app.core.security import decode_token
 from app.db.session import SessionLocal
 from app.models.user import User
 from app.services.user_service import ensure_default_admin, is_admin
+from app.services.role_service import get_role_menus
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
@@ -66,3 +67,23 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     if not is_admin(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅管理员可执行此操作")
     return user
+
+
+def require_menu(menu_key: str):
+    """菜单权限校验（RBAC）。
+
+    中文说明：
+    - 管理员默认放行（避免误配导致锁死系统）
+    - 非管理员：根据 roles 表配置的 menus 列表判断是否包含 menu_key
+    """
+
+    def _dep(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> User:
+        if is_admin(user):
+            return user
+
+        menus = get_role_menus(db, user.role)
+        if menu_key not in menus:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限访问")
+        return user
+
+    return _dep

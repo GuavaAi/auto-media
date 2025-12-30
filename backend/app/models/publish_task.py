@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String
 
 from app.db.base import Base
 
@@ -19,6 +19,9 @@ class PublishTask(Base):
     __tablename__ = "publish_tasks"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键")
+
+    # 中文说明：用于数据隔离。通常与 account/article 的 user_id 一致。
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="创建者用户 ID")
 
     provider = Column(String(50), nullable=False, index=True, comment="平台标识")
     action = Column(String(50), nullable=False, index=True, comment="动作标识")

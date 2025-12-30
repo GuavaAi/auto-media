@@ -15,12 +15,18 @@ from app.api.v1.endpoints import (
     docs,
     publish,
     quick_generate,
+    role,
     user,
 )
 
 api_router = APIRouter()
 
 require_user_dep = [Depends(deps.require_user)]
+require_admin_dep = [Depends(deps.require_admin)]
+require_api_keys_dep = [Depends(deps.require_menu("api-keys"))]
+require_datasources_dep = [Depends(deps.require_menu("datasources"))]
+require_users_dep = [Depends(deps.require_menu("users"))]
+require_roles_dep = [Depends(deps.require_menu("roles"))]
 
 # 仪表盘
 api_router.include_router(
@@ -78,7 +84,7 @@ api_router.include_router(
     datasource.router,
     prefix="/datasources",
     tags=["数据源"],
-    dependencies=require_user_dep,
+    dependencies=require_datasources_dep,
 )
 
 api_router.include_router(
@@ -112,4 +118,17 @@ api_router.include_router(
 )
 
 # 用户管理
-api_router.include_router(user.router, prefix="/users", tags=["用户管理"])
+api_router.include_router(
+    user.router,
+    prefix="/users",
+    tags=["用户管理"],
+    dependencies=require_users_dep,
+)
+
+# 角色管理
+api_router.include_router(
+    role.router,
+    prefix="/roles",
+    tags=["角色管理"],
+    dependencies=require_user_dep,
+)

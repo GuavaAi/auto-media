@@ -24,7 +24,7 @@
               <span class="title">模板列表</span>
               <el-input
                 v-model="keyKeyword"
-                placeholder="搜索 Key..."
+                placeholder="搜索模板名称..."
                 size="default"
                 clearable
                 class="search-input"
@@ -38,14 +38,14 @@
 
           <div class="new-key-box">
              <el-input
-                v-model="newKey"
-                placeholder="输入新 Key 创建..."
+                v-model="newTemplateName"
+                placeholder="输入模板名称创建..."
                 size="default"
                 clearable
-                @keyup.enter="confirmNewKey"
+                @keyup.enter="confirmNewTemplate"
               >
                 <template #append>
-                  <el-button @click="confirmNewKey">
+                  <el-button @click="confirmNewTemplate">
                     <el-icon><Plus /></el-icon>
                   </el-button>
                 </template>
@@ -54,29 +54,29 @@
 
           <el-scrollbar height="calc(100vh - 450px)" class="keys-scroll">
             <div
-              v-for="k in filteredKeys"
-              :key="k"
+              v-for="it in filteredItems"
+              :key="it.key"
               class="key-item"
-              :class="{ active: k === selectedKey }"
-              @click="selectKey(k)"
+              :class="{ active: it.key === selectedKey }"
+              @click="selectKey(it.key)"
             >
               <div class="key-main">
-                <span class="key-name">{{ k }}</span>
-                <el-tag size="small" type="info" effect="plain" class="version-tag">v{{ getLatestVersion(k) ?? '-' }}</el-tag>
+                <span class="key-name">{{ it.name }}</span>
+                <el-tag size="small" type="info" effect="plain" class="version-tag">v{{ getLatestVersion(it.key) ?? '-' }}</el-tag>
               </div>
               <div class="key-meta">
-                <span class="count">{{ getVersionCount(k) }} 个版本</span>
+                <span class="count">{{ getVersionCount(it.key) }} 个版本</span>
                 <el-icon class="arrow-icon"><ArrowRight /></el-icon>
               </div>
             </div>
-            <el-empty v-if="!filteredKeys.length" description="无匹配模板" :image-size="60" />
+            <el-empty v-if="!filteredItems.length" description="无匹配模板" :image-size="60" />
           </el-scrollbar>
         </el-card>
 
         <el-card v-if="selectedKey" class="version-card mt-4" shadow="never">
           <template #header>
             <div class="card-header">
-              <span class="title">历史版本 ({{ selectedKey }})</span>
+              <span class="title">历史版本 ({{ selectedName }})</span>
             </div>
           </template>
 
@@ -136,7 +136,7 @@
             </div>
 
             <div class="preset-box">
-              <span class="label">内置软文模板:</span>
+              <span class="label">内置模板:</span>
               <el-select
                 v-model="selectedPresetKey"
                 class="preset-select"
@@ -168,7 +168,7 @@
             <div class="preview-header">
                <div class="meta-info">
                   <span>当前预览: </span>
-                  <el-tag v-if="selectedKey" size="small">{{ selectedKey }}</el-tag>
+                  <el-tag v-if="selectedKey || draftName" size="small">{{ selectedName }}</el-tag>
                   <el-tag v-if="selectedVersion != null" type="info" size="small">v{{ selectedVersion }}</el-tag>
                </div>
                <el-button link type="primary" size="small" @click="copyContent">
@@ -208,8 +208,9 @@ const deleting = ref(false);
 
 const templates = ref<PromptTemplate[]>([]);
 const keyKeyword = ref("");
-const newKey = ref("");
+const newTemplateName = ref("");
 const selectedKey = ref<string>("");
+const draftName = ref<string>("");
 const selectedVersion = ref<number | null>(null);
 const editor = ref<string>("");
 const dirty = ref(false);
@@ -318,6 +319,11 @@ const PROTECTED_TEMPLATE_KEYS = new Set<string>([
   ...builtinPresets.map((p) => p.key),
 ]);
 
+const BUILTIN_TEMPLATE_LABELS = new Map<string, string>([
+  ["default_article", "默认模板"],
+  ...builtinPresets.map((p) => [p.key, p.label] as [string, string]),
+]);
+
 const variableChips = [
   "{topic}",
   "{outline}",
@@ -328,15 +334,25 @@ const variableChips = [
   "{sources}",
 ];
 
-const templateKeys = computed(() => {
-  const set = new Set<string>();
-  templates.value.forEach((t) => set.add(t.key));
-  return Array.from(set).sort();
+const getDisplayName = (key: string) => {
+  const latest = templates.value
+    .filter((t) => t.key === key)
+    .slice()
+    .sort((a, b) => b.version - a.version)[0];
+  return (latest?.name || BUILTIN_TEMPLATE_LABELS.get(key) || "未命名模板").trim();
+};
+
+const templateItems = computed(() => {
+  const keys = Array.from(new Set<string>(templates.value.map((t) => t.key)));
+  return keys
+    .map((key) => ({ key, name: getDisplayName(key) }))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || "") || a.key.localeCompare(b.key));
 });
 
-const filteredKeys = computed(() => {
-  if (!keyKeyword.value.trim()) return templateKeys.value;
-  return templateKeys.value.filter((k) => k.toLowerCase().includes(keyKeyword.value.trim().toLowerCase()));
+const filteredItems = computed(() => {
+  const kw = keyKeyword.value.trim().toLowerCase();
+  if (!kw) return templateItems.value;
+  return templateItems.value.filter((it) => (it.name || "").toLowerCase().includes(kw));
 });
 
 const versions = computed(() => {
@@ -375,7 +391,7 @@ const renderPreview = (tpl: string, vars: Record<string, string>) => {
 };
 
 const canPublish = computed(() => {
-  if (!selectedKey.value) return false;
+  if (!selectedKey.value && !draftName.value) return false;
   return !!editor.value?.trim();
 });
 
@@ -412,7 +428,7 @@ const _findTemplate = (key: string, version: number | null) => {
 const selectKey = async (key: string) => {
   if (dirty.value && key !== selectedKey.value) {
     try {
-      await ElMessageBox.confirm("当前编辑内容未发布，切换 key 会丢失未保存修改，是否继续？", "提示", {
+      await ElMessageBox.confirm("当前编辑内容未发布，切换模板会丢失未保存修改，是否继续？", "提示", {
         confirmButtonText: "继续",
         cancelButtonText: "取消",
         type: "warning",
@@ -423,19 +439,20 @@ const selectKey = async (key: string) => {
   }
   selectedPresetKey.value = "";
   selectedKey.value = key;
+  draftName.value = "";
   await loadLatest();
 };
 
-const confirmNewKey = async () => {
-  if (!newKey.value.trim()) {
-    ElMessage.warning("请输入新 key");
+const confirmNewTemplate = async () => {
+  if (!newTemplateName.value.trim()) {
+    ElMessage.warning("请输入模板名称");
     return;
   }
-  const key = newKey.value.trim();
+  const name = newTemplateName.value.trim();
   
   if (dirty.value) {
      try {
-       await ElMessageBox.confirm("当前编辑内容未发布，切换 key 会丢失未保存修改，是否继续？", "提示", {
+       await ElMessageBox.confirm("当前编辑内容未发布，切换模板会丢失未保存修改，是否继续？", "提示", {
         confirmButtonText: "继续",
         cancelButtonText: "取消",
         type: "warning",
@@ -446,12 +463,13 @@ const confirmNewKey = async () => {
   }
   
   selectedPresetKey.value = "";
-  selectedKey.value = key;
-  newKey.value = "";
+  selectedKey.value = "";
+  draftName.value = name;
+  newTemplateName.value = "";
   selectedVersion.value = null;
   _setEditor("");
   dirty.value = false;
-  ElMessage.info("新 key 已选中，请编辑内容后发布新版本");
+  ElMessage.info("新模板已创建草稿，请编辑内容后发布");
 };
 
 const applyPreset = async (presetKey?: string) => {
@@ -472,13 +490,16 @@ const applyPreset = async (presetKey?: string) => {
     }
   }
 
-  selectedKey.value = preset.key;
-  selectedVersion.value = null;
-  newKey.value = "";
   _setEditor(preset.content);
   dirty.value = true;
-  ElMessage.success("已填充内置模板，可直接发布新版本");
+  ElMessage.success("已填充内置模板内容，可继续编辑后发布");
 };
+
+const selectedName = computed(() => {
+  if (selectedKey.value) return getDisplayName(selectedKey.value);
+  if (draftName.value) return draftName.value;
+  return "";
+});
 
 const getLatestVersion = (key: string) => {
   const list = templates.value.filter((t) => t.key === key);
@@ -522,7 +543,7 @@ const rollbackFromRow = async (row: PromptTemplate) => {
   if (!row?.key) return;
   try {
     await ElMessageBox.confirm(
-      `确认回滚：将 ${row.key}@v${row.version} 的内容发布为一个新的版本（version+1）？`,
+      `确认回滚：将 ${getDisplayName(row.key)}@v${row.version} 的内容发布为一个新的版本（version+1）？`,
       "回滚确认",
       {
         confirmButtonText: "回滚发布",
@@ -537,7 +558,7 @@ const rollbackFromRow = async (row: PromptTemplate) => {
   saving.value = true;
   try {
     const created = await createPromptTemplate({ key: row.key, content: row.content });
-    ElMessage.success(`回滚成功：已发布 ${created.key}@v${created.version}`);
+    ElMessage.success(`回滚成功：已发布 ${created.name || getDisplayName(created.key)}@v${created.version}`);
     await loadTemplates();
     selectedKey.value = row.key;
     selectedVersion.value = created.version;
@@ -559,7 +580,7 @@ const deleteCurrentKey = async () => {
 
   try {
     await ElMessageBox.confirm(
-      `确认删除模板：${key}\n\n将删除该 key 的全部历史版本，且不可恢复。`,
+      `确认删除模板：${getDisplayName(key)}\n\n将删除该模板的全部历史版本，且不可恢复。`,
       "删除确认",
       {
         confirmButtonText: "删除",
@@ -577,6 +598,7 @@ const deleteCurrentKey = async () => {
     ElMessage.success("删除成功");
     selectedPresetKey.value = "";
     selectedKey.value = "";
+    draftName.value = "";
     selectedVersion.value = null;
     _setEditor("");
     dirty.value = false;
@@ -589,8 +611,8 @@ const deleteCurrentKey = async () => {
 };
 
 const publish = async () => {
-  if (!selectedKey.value) {
-    ElMessage.warning("请先选择或输入 key");
+  if (!selectedKey.value && !draftName.value) {
+    ElMessage.warning("请先选择模板");
     return;
   }
   if (!editor.value?.trim()) {
@@ -600,10 +622,13 @@ const publish = async () => {
 
   saving.value = true;
   try {
-    const created = await createPromptTemplate({ key: selectedKey.value, content: editor.value });
-    ElMessage.success(`发布成功：${created.key}@v${created.version}`);
+    const created = selectedKey.value
+      ? await createPromptTemplate({ key: selectedKey.value, content: editor.value })
+      : await createPromptTemplate({ name: draftName.value, content: editor.value });
+    ElMessage.success(`发布成功：${created.name || getDisplayName(created.key)}@v${created.version}`);
     await loadTemplates();
     selectedKey.value = created.key;
+    draftName.value = "";
     selectedVersion.value = created.version;
     _setEditor(created.content);
   } catch (err: any) {

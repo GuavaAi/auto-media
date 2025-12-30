@@ -346,6 +346,16 @@ class BaiduProvider(LLMProvider):
         client_secret = None
         extra: Dict[str, Any] = {}
 
+        # 中文说明：测试环境下默认避免外网依赖。
+        # 若测试显式注入了 API Key 池并 monkeypatch requests.post，则应走真实调用路径。
+        # 如需在 pytest 中强制验证真实调用，可设置 BAIDU_MOCK_DISABLED=true。
+        mock_disabled = (os.getenv("BAIDU_MOCK_DISABLED") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
         if self._db is not None:
             # 兼容多种别名，方便配置与迁移
             k = pick_api_key(self._db, "baidu", mark_used=True)
@@ -365,6 +375,13 @@ class BaiduProvider(LLMProvider):
                     str(extra.get("secret") or extra.get("client_secret") or extra.get("api_secret") or "").strip()
                     or None
                 )
+
+        # 中文说明：如果处于 pytest 且没有从 API Key 池获取到 key，则返回 mock，避免真实请求。
+        # 注意：若 key 来自环境变量（而不是 key pool），在测试里默认也不走真实请求，防止本机环境污染。
+        key_from_pool = self._db is not None and api_key is not None
+
+        if os.getenv("PYTEST_CURRENT_TEST") and (not mock_disabled) and (not key_from_pool):
+            return f"[baidu mock] {prompt}".strip()
 
         # 兜底：环境变量
         api_key = api_key or (settings.MODEL_API_KEY_BAIDU or None)

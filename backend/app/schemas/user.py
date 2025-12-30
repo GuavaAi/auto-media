@@ -55,7 +55,9 @@ class AuthLoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+    menus: list[str] = Field(default_factory=list, description="可访问菜单 key 列表")
 
 
 class AuthProfileResponse(BaseModel):
     user: UserOut
+    menus: list[str] = Field(default_factory=list, description="可访问菜单 key 列表")

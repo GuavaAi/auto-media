@@ -10,3 +10,4 @@ from app.models.api_key import ApiKey  # noqa: F401
 from app.models.publish_account import PublishAccount  # noqa: F401
 from app.models.publish_task import PublishTask  # noqa: F401
 from app.models.user import User  # noqa: F401
+from app.models.role import Role  # noqa: F401

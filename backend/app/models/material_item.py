@@ -14,6 +14,9 @@ class MaterialItem(Base):
 
     id = Column(Integer, primary_key=True, index=True, comment="主键")
 
+    # 中文说明：用于数据隔离。通常与所属 pack 的 user_id 一致。
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="创建者用户 ID")
+
     pack_id = Column(
         Integer,
         ForeignKey("material_packs.id"),

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 
 from app.db.base import Base
 
@@ -11,6 +11,10 @@ class MaterialPack(Base):
     __tablename__ = "material_packs"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键")
+
+    # 中文说明：用于数据隔离。非管理员默认只能访问自己创建的素材包。
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="创建者用户 ID")
+
     name = Column(String(200), nullable=False, comment="素材包名称")
     description = Column(Text, nullable=True, comment="素材包描述")
 
