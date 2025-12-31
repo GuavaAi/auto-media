@@ -27,6 +27,12 @@
 
 说明：生成的文章会保留素材来源，方便后续回溯与复盘。
 
+## 在线体验
+
+- https://automedia.higuava.cn/
+- 账户：test
+- 密码：123456
+
 ## 环境准备
 
 在开始之前，请确保您的系统中已安装以下软件：
@@ -126,6 +132,8 @@ python -m playwright install --with-deps chromium
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+
+后台运行 nohup uvicorn app.main:app --reload --host 127.0.0.1 --port 8010 > my.log 2>&1 &
 ```
 
 接口探活：`GET http://localhost:8010/health`

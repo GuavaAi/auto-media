@@ -332,5 +332,8 @@ data/
 *.xlsx
 .env
 celerybeat-schedule.*
+clean_cache_dirs.py
+.env.prod
+
 tests/
 

@@ -12,7 +12,6 @@ auto-*.d.ts
 .pytest_cache
 .windsurfrules
 .env
-
 docker-compose.prod.yml
 阿里云部署.md
 改进计划V2.md
