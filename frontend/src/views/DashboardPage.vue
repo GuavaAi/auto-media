@@ -10,10 +10,36 @@
           class="immersive-search"
           :prefix-icon="Search"
           size="large"
-          :disabled="isSearching"
-          @keyup.enter="handleSearch"
-        />
+          @keyup.enter="enqueueTopicFromInput"
+        >
+          <template #append>
+            <el-button
+              ref="generateBtnRef"
+              class="premium-generate-btn"
+              type="primary"
+              :disabled="!searchQuery.trim()"
+              @click="enqueueTopicFromInput"
+            >
+              生成
+            </el-button>
+          </template>
+        </el-input>
       </div>
+    </div>
+
+    <!-- 任务队列悬浮按钮: 靠右侧固定 -->
+    <div 
+      ref="floatingQueueRef"
+      class="floating-queue-trigger" 
+      :class="{ 'bump-anim': bumpQueue }"
+      @click="queueVisible = true"
+    >
+      <el-badge :value="queue.queuedCount" :hidden="queue.queuedCount === 0" class="queue-badge">
+        <div class="queue-fab">
+          <el-icon :size="20"><List /></el-icon>
+          <span class="fab-text">任务队列</span>
+        </div>
+      </el-badge>
     </div>
 
     <!-- 今日热点 -->
@@ -31,163 +57,226 @@
         </el-button>
       </div>
 
-      <!-- Active Inspiration Loading Overlay -->
-      <el-dialog
-        v-model="isSearching"
-        :show-close="false"
-        :close-on-click-modal="false"
-        :close-on-press-escape="false"
-        width="30%"
-        center
-        align-center
-        style="background: transparent; box-shadow: none;"
-      >
-        <div style="background: white; border-radius: 16px; padding: 20px;">
-          <AIThinking :steps="['正在全网搜索素材...', '阅读相关报道...', '提取核心观点...', '构建文章框架...', '生成初稿...']" />
-        </div>
-      </el-dialog>
-
       <div v-if="loading" class="loading-state">
         <AIThinking :steps="['正在获取热点数据...', '分析今日趋势...', '整理推荐内容...']" />
       </div>
 
       <div v-else-if="!hotspots.length" class="empty-state">
-        <el-empty description="今日暂无热点榜单">
-          <el-button type="primary" @click="buildToday">生成今日榜单</el-button>
+        <el-empty description="今日暂无窗口热点">
+          <el-button type="primary" @click="fetchHotspots">生成今日热点</el-button>
         </el-empty>
       </div>
 
       <div v-else class="cards-grid">
-        <div v-for="item in hotspots" :key="item.id" class="feed-card">
+        <div v-for="item in hotspots" :key="itemKey(item)" class="feed-card">
           <div class="card-body">
             <div class="card-meta">
               <span class="hot-score">🔥 {{ item.hot_score?.toFixed(1) || '-' }}</span>
               <span class="source-count">{{ item.source_count }} 个来源</span>
+              <el-tag
+                v-if="(item.flags || {}).list_parent_fallback"
+                size="small"
+                type="warning"
+                effect="plain"
+              >
+                聚合页兜底
+              </el-tag>
             </div>
             <h3 class="card-title">{{ item.title }}</h3>
-            <p class="card-summary">{{ item.summary }}</p>
+            <p class="card-summary">{{ item.summary || '暂无摘要' }}</p>
           </div>
           <div class="card-actions">
-            <el-button 
-              class="action-btn draft-btn" 
-              type="primary" 
-              :loading="generatingId === item.id"
+            <el-button
+              class="action-btn draft-btn"
+              type="primary"
               @click="handleQuickDraft(item)"
             >
-              {{ generatingId === item.id ? '正在生成...' : '⚡ 一键生成' }}
+              ⚡ 一键生成
             </el-button>
-            <el-button class="action-btn" plain @click="goDetail(item.id)">
+            <el-button class="action-btn" plain @click="goDetail(item)">
               查看详情
             </el-button>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- 任务队列：不阻塞用户其它操作，后台串行执行 -->
+    <el-drawer v-model="queueVisible" title="任务队列" size="420px">
+      <div v-if="!queue.tasks.length" class="empty-queue">
+        <el-empty description="暂无任务" />
+      </div>
+      <div v-else class="queue-list">
+        <div v-for="t in queue.tasks" :key="t.id" class="queue-item">
+          <div class="queue-item-main">
+            <div class="queue-item-title">
+              <span class="queue-item-label">{{ t.label }}</span>
+              <el-tag
+                size="small"
+                :type="queue.statusTagType(t.status)"
+                effect="light"
+              >
+                {{ queue.statusText(t.status) }}
+              </el-tag>
+            </div>
+            <div v-if="t.errorMessage" class="queue-item-error">{{ t.errorMessage }}</div>
+          </div>
+
+          <div class="queue-item-actions">
+            <el-button
+              v-if="t.status === 'success' && t.articleId"
+              size="small"
+              type="primary"
+              plain
+              @click="openArticle(t.articleId)"
+            >
+              打开文章
+            </el-button>
+            <el-button
+              v-if="t.status === 'failed'"
+              size="small"
+              @click="queue.retryTask(t.id)"
+            >
+              重试
+            </el-button>
+            <el-button
+              v-if="t.status !== 'running'"
+              size="small"
+              type="danger"
+              plain
+              @click="queue.removeTask(t.id)"
+            >
+              移除
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
-import { Search } from "@element-plus/icons-vue";
+import { Search, List } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import dayjs from "dayjs";
-import { listDailyHotspots, buildDailyHotspots, quickGenerateFromEvent, quickGenerateFromTopic } from "@/api/dailyHotspots";
+import { buildWindowHotspots } from "@/api/windowHotspots";
 import AIThinking from "@/components/AIThinking.vue";
-import type { DailyHotspotEvent } from "@/types";
+import type { WindowHotspotEvent } from "@/types";
+import { useTaskQueueStore } from "@/stores/taskQueue";
 
 const router = useRouter();
+const queue = useTaskQueueStore();
 const searchQuery = ref("");
 const loading = ref(false);
-const hotspots = ref<DailyHotspotEvent[]>([]);
-const generatingId = ref<number | null>(null);
-const isSearching = ref(false);
+const hotspots = ref<WindowHotspotEvent[]>([]);
+const queueVisible = ref(false);
+
+const generateBtnRef = ref<HTMLElement | null>(null);
+const floatingQueueRef = ref<HTMLElement | null>(null);
+const bumpQueue = ref(false);
+
+const startFlyAnimation = () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const btnEl = (generateBtnRef.value as any)?.$el;
+  if (!btnEl || !floatingQueueRef.value) return;
+
+  const startRect = btnEl.getBoundingClientRect();
+  const endRect = floatingQueueRef.value.getBoundingClientRect();
+
+  // 创建飞行元素
+  const flyer = document.createElement("div");
+  flyer.textContent = "✨";
+  flyer.style.position = "fixed";
+  flyer.style.left = `${startRect.right - 40}px`;
+  flyer.style.top = `${startRect.top + 10}px`;
+  flyer.style.zIndex = "9999";
+  flyer.style.fontSize = "20px";
+  flyer.style.pointerEvents = "none";
+  flyer.style.transition = "all 0.8s cubic-bezier(0.19, 1, 0.22, 1)";
+  flyer.style.opacity = "1";
+  flyer.style.transform = "scale(1)";
+
+  document.body.appendChild(flyer);
+
+  // 下一帧开始动画
+  requestAnimationFrame(() => {
+    flyer.style.left = `${endRect.left + 15}px`;
+    flyer.style.top = `${endRect.top + 10}px`;
+    flyer.style.opacity = "0";
+    flyer.style.transform = "scale(0.5)";
+  });
+
+  // 动画结束清理
+  flyer.addEventListener("transitionend", () => {
+    if (flyer.parentNode) {
+      flyer.parentNode.removeChild(flyer);
+    }
+    // 触发队列图标弹跳
+    bumpQueue.value = true;
+    setTimeout(() => {
+      bumpQueue.value = false;
+    }, 300);
+  });
+};
 
 const todayStr = computed(() => dayjs().format("YYYY-MM-DD"));
 
 const fetchHotspots = async () => {
   loading.value = true;
   try {
-    const res = await listDailyHotspots(todayStr.value, 10);
+    const res = await buildWindowHotspots({
+      window: "today",
+      limit: 10,
+      use_llm: false,
+    });
     hotspots.value = res.items || [];
   } catch (err: any) {
-    ElMessage.error(err.message || "加载热点失败");
+    ElMessage.error(err.message || "加载今日热点失败");
   } finally {
     loading.value = false;
   }
 };
 
-const buildToday = async () => {
-  loading.value = true;
+const handleQuickDraft = (item: WindowHotspotEvent) => {
+  // 中文说明：窗口热点没有数据库 ID，一键生成改为按标题主题入队
+  queue.enqueueTopic(item.title);
+};
+
+const goDetail = (item: WindowHotspotEvent) => {
+  const key = itemKey(item);
   try {
-    await buildDailyHotspots(todayStr.value, 20);
-    ElMessage.success("榜单生成成功");
-    await fetchHotspots();
-  } catch (err: any) {
-    const msg = err?.message || "生成榜单失败";
-
-    // 中文说明：当日没有可用采集数据时，引导运营同学直接去“数据源管理”触发抓取
-    if (typeof msg === "string" && msg.includes("当日无可用采集数据")) {
-      loading.value = false;
-      try {
-        await ElMessageBox.confirm(
-          "今天还没有可用采集数据，是否现在前往“数据源管理”去采集？",
-          "需要先采集数据",
-          {
-            confirmButtonText: "去采集",
-            cancelButtonText: "取消",
-            type: "warning",
-          }
-        );
-        router.push("/datasources");
-      } catch {
-        // 用户取消时不做处理
-      }
-      return;
-    }
-
-    ElMessage.error(msg);
+    sessionStorage.setItem(`window_hotspot_detail:${key}`, JSON.stringify(item));
+  } catch {
+    // ignore
   }
-  finally {
-    loading.value = false;
-  }
+  router.push({
+    path: `/window-hotspots/${encodeURIComponent(key)}`,
+    query: { window: "today" },
+  });
 };
 
-const handleQuickDraft = async (item: DailyHotspotEvent) => {
-  generatingId.value = item.id;
-  try {
-    ElMessage.info("AI 正在阅读素材、构思文章...");
-    const article = await quickGenerateFromEvent(item.id);
-    ElMessage.success("草稿已生成！");
-    router.push(`/articles/${article.id}`);
-  } catch (err: any) {
-    ElMessage.error(err.message || "生成失败");
-  } finally {
-    generatingId.value = null;
-  }
+const itemKey = (row: WindowHotspotEvent) => {
+  const t = (row?.title || "").trim();
+  const te = (row?.event_time_end || "").trim();
+  const u = ((row?.sources || [])[0]?.url || "").trim();
+  return `${row.window || "today"}|${t}|${te}|${u}`;
 };
 
-const goDetail = (id: number) => {
-  router.push(`/daily-hotspots/${id}`);
+const openArticle = (articleId: number) => {
+  router.push(`/articles/${articleId}`);
 };
 
-const handleSearch = async () => {
+const enqueueTopicFromInput = () => {
   const q = searchQuery.value.trim();
   if (!q) return;
-  
-  isSearching.value = true;
-  try {
-    // 场景 B: Active Inspiration
-    // 实时联网搜索 -> 生成
-    const article = await quickGenerateFromTopic(q);
-    ElMessage.success("灵感生成成功！");
-    await router.push(`/articles/${article.id}`);
-  } catch (err: any) {
-    ElMessage.error(err.message || "生成失败，请重试");
-  } finally {
-    // 中文说明：无论成功跳转还是失败，都需要关闭对话框蒙层
-    isSearching.value = false;
-  }
+
+  // 触发动画
+  startFlyAnimation();
+
+  queue.enqueueTopic(q);
+  searchQuery.value = "";
 };
 
 onMounted(() => {
@@ -215,31 +304,195 @@ onMounted(() => {
   font-weight: 800;
   background: linear-gradient(120deg, #1a1a1a 0%, #555 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 28px;
   letter-spacing: -1px;
 }
 
+/* 搜索栏与生成按钮 */
 .search-bar {
-  max-width: 560px;
+  max-width: 600px;
   margin: 0 auto;
+}
+
+:deep(.immersive-search) {
+  --el-input-height: 54px; /* 定义一个基准高度 */
+}
+
+:deep(.immersive-search .el-input__wrapper) {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  height: var(--el-input-height) !important;
+  padding-right: 0 !important;
+}
+
+:deep(.immersive-search .el-input-group__append) {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0 20px 20px 0 !important;
+  overflow: hidden;
+  box-shadow: 4px 4px 16px rgba(0, 0, 0, 0.06);
+  margin-left: -1px; /* 消除微小缝隙 */
+}
+
+.premium-generate-btn {
+  background: linear-gradient(135deg, #1a1a1a 0%, #434343 100%) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 600 !important;
+  padding: 0 30px !important;
+  height: var(--el-input-height) !important; /* 强制与输入框高度一致 */
+  border-radius: 0 20px 20px 0 !important;
+  transition: all 0.3s ease !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.premium-generate-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateX(2px);
+}
+
+.premium-generate-btn:disabled {
+  background: #ccc !important;
+  cursor: not-allowed;
+}
+
+/* 悬浮任务队列按钮 */
+.floating-queue-trigger {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1000;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bump-anim {
+  animation: bump 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes bump {
+  0% { transform: translateY(-50%) scale(1); }
+  50% { transform: translateY(-50%) scale(1.2); }
+  100% { transform: translateY(-50%) scale(1); }
+}
+
+.queue-fab {
+  background: #fff;
+  padding: 12px 8px;
+  border-radius: 12px 0 0 12px;
+  box-shadow: -4px 0 15px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-right: none;
+  width: 44px;
+  transition: width 0.3s;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.fab-text {
+  font-size: 12px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  color: #1a1a1a;
+  font-weight: 500;
+  letter-spacing: 2px;
+}
+
+.floating-queue-trigger:hover {
+  transform: translateY(-50%) translateX(-5px);
+}
+
+.floating-queue-trigger:hover .queue-fab {
+  background: #1a1a1a;
+}
+
+.floating-queue-trigger:hover .fab-text,
+.floating-queue-trigger:hover :deep(.el-icon) {
+  color: #fff;
+}
+
+.queue-badge :deep(.el-badge__content) {
+  top: 5px;
+  right: 5px;
+}
+
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.queue-item {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.queue-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.queue-item-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.queue-item-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.queue-item-error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #d93026;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.queue-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 :deep(.immersive-search .el-input__wrapper) {
   border-radius: 20px;
-  padding: 8px 20px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  padding: 0 20px;
   transition: all 0.3s ease;
 }
 
-:deep(.immersive-search .el-input__wrapper:hover),
 :deep(.immersive-search.is-focus .el-input__wrapper) {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
 :deep(.immersive-search .el-input__inner) {
   font-size: 16px;
-  height: 44px;
+  height: 100%; /* 显式设置高度，确保 wrapper 撑开 */
 }
 
 /* 内容区 */
@@ -311,9 +564,10 @@ onMounted(() => {
   font-size: 14px;
   color: #666;
   line-height: 1.6;
-  display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  display: -webkit-box;
   overflow: hidden;
 }
 

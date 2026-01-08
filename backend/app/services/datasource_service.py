@@ -23,6 +23,7 @@ from app.services.crawler import (
 from app.services.api_key_pool import pick_api_key
 from app.services.text_cleaner import clean_text
 from app.services.readability_extractor import extract_main_text
+from app.services.html_meta_extractor import extract_page_meta
 from app.factories.content_factory import ContentFactory, compute_url_hash, compute_content_hash
 from app.repositories.datasource_repo import DataSourceRepository, DataSourceContentRepository
 
@@ -309,11 +310,19 @@ class DataSourceService:
                 html = page.html or ""
                 if not isinstance(html, str) or not html.strip():
                     return {"skip": "empty", "url": url}
+                page_meta = extract_page_meta(html)
                 content_text, extractor_name, extractor_meta = _extract_text_from_subpage_html(html, url)
                 if content_text == "":
                     return {"skip": "empty", "url": url}
                 clean_res = clean_text(content_text, cleaner_cfg if isinstance(cleaner_cfg, dict) else None)
                 content_hash = compute_content_hash(content_text)
+                display_title = None
+                if isinstance(extractor_meta, dict):
+                    t = extractor_meta.get("title")
+                    if isinstance(t, str) and t.strip():
+                        display_title = t.strip()
+                if not display_title:
+                    display_title = page_meta.title
                 return {
                     "url": url,
                     "clean_res": clean_res,
@@ -321,8 +330,9 @@ class DataSourceService:
                     "status_code": getattr(page, "status_code", None),
                     "final_url": getattr(page, "final_url", None),
                     "extractor": extractor_name,
-                    "display_title": None,
+                    "display_title": display_title,
                     "extractor_meta": extractor_meta,
+                    "page_meta": page_meta,
                 }
             except Exception:
                 return None
@@ -358,6 +368,8 @@ class DataSourceService:
                     stats.add_skipped(str(url), "empty")
                     continue
 
+                page_meta = extract_page_meta(html)
+
                 content_text, extractor_name, extractor_meta = _extract_text_from_html(html, url)
                 if content_text == "":
                     stats.empty_skipped += 1
@@ -366,6 +378,14 @@ class DataSourceService:
 
                 clean_res = clean_text(content_text, cleaner_cfg if isinstance(cleaner_cfg, dict) else None)
                 content_hash = compute_content_hash(content_text)
+
+                display_title = None
+                if isinstance(extractor_meta, dict):
+                    t = extractor_meta.get("title")
+                    if isinstance(t, str) and t.strip():
+                        display_title = t.strip()
+                if not display_title:
+                    display_title = page_meta.title
 
                 # 中文说明：force=true 且当天已有父页面记录，则覆盖更新，不新增。
                 if parent_today and force:
@@ -377,6 +397,10 @@ class DataSourceService:
                         "is_discovered": False,
                         "extractor": extractor_name,
                         "extractor_meta": extractor_meta,
+                        "display_title": display_title,
+                        "publish_time": page_meta.publish_time,
+                        "modified_time": page_meta.modified_time,
+                        "page_meta": page_meta.raw,
                         "content_hash": content_hash,
                         "content_hash_clean": getattr(clean_res, "content_hash_clean", None),
                         "clean_stats": getattr(clean_res, "stats", None),
@@ -400,11 +424,19 @@ class DataSourceService:
                     status_code=getattr(page, "status_code", None),
                     final_url=getattr(page, "final_url", None),
                     extractor_name=extractor_name,
-                    display_title=None,
+                    display_title=display_title,
                     extractor_meta=extractor_meta,
                     is_discovered=is_discovered,
                 )
                 if rec:
+                    extra = rec.extra if isinstance(rec.extra, dict) else {}
+                    rec.extra = {
+                        **extra,
+                        "display_title": display_title,
+                        "publish_time": page_meta.publish_time,
+                        "modified_time": page_meta.modified_time,
+                        "page_meta": page_meta.raw,
+                    }
                     results.append(rec)
             except Exception as exc:
                 logger.error(f"Fetch failed for {url}: {str(exc)}")
@@ -454,6 +486,27 @@ class DataSourceService:
                         is_discovered=True,
                     )
                     if rec2:
+                        pm = payload.get("page_meta")
+                        if hasattr(pm, "raw"):
+                            pm_raw = pm.raw
+                            pm_pub = getattr(pm, "publish_time", None)
+                            pm_mod = getattr(pm, "modified_time", None)
+                        elif isinstance(pm, dict):
+                            pm_raw = pm
+                            pm_pub = pm.get("publish_time")
+                            pm_mod = pm.get("modified_time")
+                        else:
+                            pm_raw = None
+                            pm_pub = None
+                            pm_mod = None
+                        extra2 = rec2.extra if isinstance(rec2.extra, dict) else {}
+                        rec2.extra = {
+                            **extra2,
+                            "display_title": payload.get("display_title"),
+                            "publish_time": pm_pub,
+                            "modified_time": pm_mod,
+                            "page_meta": pm_raw,
+                        }
                         results.append(rec2)
 
         return results

@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     datasource,
     generation,
     daily_hotspot,
+    window_hotspot,
     dashboard,
     material,
     api_key,
@@ -105,6 +106,13 @@ api_router.include_router(
 api_router.include_router(
     daily_hotspot.router,
     prefix="/daily-hotspots",
+    tags=["热点榜单"],
+    dependencies=require_user_dep,
+)
+
+api_router.include_router(
+    window_hotspot.router,
+    prefix="/window-hotspots",
     tags=["热点榜单"],
     dependencies=require_user_dep,
 )

@@ -29,6 +29,7 @@ from app.schemas.crawl_record import (
 from app.services.api_key_pool import pick_api_key
 from app.services.crawler import apply_parser, get_crawler_by_engine
 from app.services.readability_extractor import extract_main_text
+from app.services.html_meta_extractor import extract_page_meta
 from app.services.text_cleaner import clean_text
 from app.services.user_service import is_admin
 
@@ -358,6 +359,8 @@ def quick_fetch(
         crawl_res = crawler.fetch(url, timeout=timeout)
         raw_html = crawl_res.html
 
+        page_meta = extract_page_meta(raw_html)
+
         extract_res = extract_main_text(raw_html, None)
         content_text = extract_res.main_text
         if css_selector:
@@ -391,6 +394,9 @@ def quick_fetch(
                 "extractor": extract_res.extractor,
                 "extractor_meta": extract_res.meta,
                 "display_title": display_title,
+                "publish_time": page_meta.publish_time,
+                "modified_time": page_meta.modified_time,
+                "page_meta": page_meta.raw,
                 "content_hash": content_hash_raw,
                 "clean_stats": clean_res.stats,
                 "quality_flags": clean_res.quality_flags,

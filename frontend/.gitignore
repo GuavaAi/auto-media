@@ -8,3 +8,4 @@ auto-*.d.ts
 .idea
 .history
 .vscode
+pnpm-lock.yaml

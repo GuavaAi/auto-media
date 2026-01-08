@@ -8,9 +8,9 @@
         </p>
       </div>
       <div class="header-actions">
-        <el-button type="primary" size="large" :loading="building" @click="build">
+        <el-button type="primary" size="large" :loading="windowLoading" @click="fetchWindowList">
           <el-icon class="el-icon--left"><MagicStick /></el-icon>
-          生成今日榜单 (Build)
+          生成窗口热点
         </el-button>
       </div>
     </div>
@@ -19,60 +19,65 @@
       <template #header>
         <div class="card-header">
           <div class="left-panel">
-            <el-date-picker
-              v-model="day"
-              type="date"
-              value-format="YYYY-MM-DD"
-              format="YYYY-MM-DD"
-              placeholder="选择日期"
-              style="width: 180px"
-              :clearable="false"
-              @change="fetchList"
-            />
-            <el-divider direction="vertical" />
-             <el-radio-group v-model="limit" size="default" @change="fetchList">
+            <el-radio-group v-model="limit" size="default" @change="onLimitChange">
               <el-radio-button :value="20">Top 20</el-radio-button>
               <el-radio-button :value="50">Top 50</el-radio-button>
               <el-radio-button :value="100">Top 100</el-radio-button>
             </el-radio-group>
+
+            <el-divider direction="vertical" />
+            <el-radio-group v-model="windowKey" size="default" @change="fetchWindowList">
+              <el-radio-button :value="'today'">今日</el-radio-button>
+              <el-radio-button :value="'week'">本周</el-radio-button>
+              <el-radio-button :value="'month'">本月</el-radio-button>
+              <el-radio-button :value="'range'">范围</el-radio-button>
+            </el-radio-group>
+
+            <el-date-picker
+              v-if="windowKey === 'range'"
+              v-model="rangeValue"
+              type="daterange"
+              unlink-panels
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              value-format="YYYY-MM-DD"
+              @change="onRangeChange"
+              style="margin-left: 12px"
+            />
           </div>
           <div class="right-panel">
             <el-button @click="openBasket">素材篮 ({{ basket.count }})</el-button>
 
-            <el-button
-              :disabled="items.length === 0"
-              @click="openTopicFilter"
-            >
+            <el-button :disabled="windowItems.length === 0" @click="openTopicFilter">
               <el-icon class="el-icon--left"><MagicStick /></el-icon>
               主题智能筛选
             </el-button>
 
             <el-button
               type="warning"
-              :disabled="selectedEventIds.length === 0"
+              :disabled="selectedWindowRows.length === 0"
               :loading="addingToBasket"
-              @click="addSelectedToBasket"
+              @click="addSelectedWindowToBasket"
             >
               加入素材篮
-              <span v-if="selectedEventIds.length" style="margin-left: 6px">({{ selectedEventIds.length }})</span>
+              <span v-if="selectedWindowRows.length" style="margin-left: 6px">({{ selectedWindowRows.length }})</span>
             </el-button>
 
             <el-button
               type="success"
-              :disabled="selectedEventIds.length === 0"
+              :disabled="selectedWindowRows.length === 0"
               :loading="importing"
-              @click="openImportDialog"
+              @click="openWindowImportDialog"
             >
               一键导入素材包
-              <span v-if="selectedEventIds.length" style="margin-left: 6px">({{ selectedEventIds.length }})</span>
+              <span v-if="selectedWindowRows.length" style="margin-left: 6px">({{ selectedWindowRows.length }})</span>
             </el-button>
 
-            <el-button v-if="topicFilterApplied" @click="clearTopicFilter">
-              清除筛选
-            </el-button>
+            <el-button v-if="topicFilterApplied" @click="clearTopicFilter">清除筛选</el-button>
 
             <el-tooltip content="刷新列表" placement="top">
-              <el-button circle @click="fetchList" :loading="loading">
+              <el-button circle @click="refreshCurrent" :loading="windowLoading">
                 <el-icon><Refresh /></el-icon>
               </el-button>
             </el-tooltip>
@@ -80,8 +85,12 @@
         </div>
       </template>
 
-      <el-empty v-if="!loading && items.length === 0" description="暂无该日榜单数据" :image-size="200">
-        <el-button type="primary" plain @click="build" v-if="isToday(day)">立即生成</el-button>
+      <el-empty
+        v-if="!windowLoading && displayItems.length === 0"
+        description="暂无窗口热点数据"
+        :image-size="200"
+      >
+        <el-button type="primary" plain @click="fetchWindowList">立即生成</el-button>
       </el-empty>
 
       <el-table
@@ -90,10 +99,11 @@
         stripe
         size="default"
         class="data-table"
-        v-loading="loading"
+        v-loading="windowLoading"
         highlight-current-row
-        @row-click="onRowClick"
-        @selection-change="onSelectionChange"
+        :row-key="windowRowKey"
+        @row-click="onWindowRowClick"
+        @selection-change="onWindowSelectionChange"
       >
         <el-table-column type="selection" width="52" align="center" />
         <el-table-column label="排名" width="80" align="center">
@@ -101,16 +111,42 @@
             <span class="rank-num" :class="getRankClass($index + 1)">{{ $index + 1 }}</span>
           </template>
         </el-table-column>
-        
-        <el-table-column prop="title" label="热点事件" min-width="200">
+
+        <el-table-column prop="title" label="热点事件" min-width="220">
           <template #default="{ row }">
-             <div class="event-title">{{ row.title }}</div>
+            <div class="event-title">
+              {{ row.title }}
+              <el-tag
+                v-if="(row.flags || {}).list_parent_fallback || ((row.extra || {}) as any).is_list_parent"
+                size="small"
+                type="warning"
+                effect="plain"
+                style="margin-left: 8px"
+              >
+                聚合页兜底
+              </el-tag>
+              <el-tag
+                v-else-if="(row.flags || {}).has_list_parent || ((row.extra || {}) as any).has_list_parent"
+                size="small"
+                type="info"
+                effect="plain"
+                style="margin-left: 8px"
+              >
+                含聚合页来源
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
 
-        <el-table-column prop="summary" label="智能摘要" min-width="350">
+        <el-table-column prop="summary" label="智能摘要" min-width="320">
           <template #default="{ row }">
             <div class="summary-text">{{ row.summary || "暂无摘要" }}</div>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="event_time_end" label="事件时间" width="180" align="center">
+          <template #default="{ row }">
+            <span class="text-sm">{{ formatDateTime(row.event_time_end) || '-' }}</span>
           </template>
         </el-table-column>
 
@@ -118,27 +154,67 @@
           <template #default="{ row }">
             <span class="hot-score">
               <el-icon color="#f56c6c"><DataAnalysis /></el-icon>
-              {{ row.hot_score.toLocaleString() }}
+              {{ Number(row.hot_score || 0).toLocaleString() }}
             </span>
           </template>
         </el-table-column>
 
         <el-table-column prop="source_count" label="来源数" width="100" align="center" sortable>
-           <template #default="{ row }">
-              <el-tag size="small" type="info" effect="plain">{{ row.source_count }} 来源</el-tag>
-           </template>
+          <template #default="{ row }">
+            <el-tag size="small" type="info" effect="plain">{{ row.source_count }} 来源</el-tag>
+          </template>
         </el-table-column>
 
         <el-table-column label="操作" width="120" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link @click.stop="goDetail(row.id)">
-               详情
-               <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+            <el-button type="primary" link @click.stop="goWindowDetail(row)">
+              详情
+              <el-icon class="el-icon--right"><ArrowRight /></el-icon>
             </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
+
+    <el-dialog v-model="importDialogVisible" title="一键导入素材包" width="760px" destroy-on-close>
+      <el-form label-position="top">
+        <el-form-item label="素材包名称（必填）" required>
+          <el-select
+            v-model="importPackName"
+            placeholder="输入或选择素材包"
+            filterable
+            allow-create
+            default-first-option
+            style="width: 100%"
+          >
+            <el-option
+              v-for="p in importPackOptions"
+              :key="p.id"
+              :label="`#${p.id} ${p.name}`"
+              :value="p.name"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="描述（可选）">
+          <el-input v-model="importPackDesc" placeholder="例如：热点榜单一键导入" />
+        </el-form-item>
+
+        <el-alert
+          :title="importAlertTitle"
+          type="info"
+          show-icon
+          :closable="false"
+        />
+      </el-form>
+
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importing" :disabled="!importPackName.trim()" @click="confirmImport">
+          开始导入
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="topicDialogVisible" title="按主题智能筛选热点（可人工确认）" width="860px">
       <el-form label-position="top">
@@ -171,49 +247,7 @@
       <template #footer>
         <el-button @click="topicDialogVisible = false">取消</el-button>
         <el-button :loading="topicLoading" @click="runTopicFilter">重新筛选</el-button>
-        <el-button type="primary" :disabled="topicDecisions.length === 0" @click="applyTopicFilter">
-          应用筛选
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="importDialogVisible" title="一键导入素材包" width="760px" destroy-on-close>
-      <el-form label-position="top">
-        <el-form-item label="素材包名称（必填）" required>
-          <el-select
-            v-model="importPackName"
-            placeholder="输入或选择素材包"
-            filterable
-            allow-create
-            default-first-option
-            style="width: 100%"
-          >
-            <el-option
-              v-for="p in importPackOptions"
-              :key="p.id"
-              :label="`#${p.id} ${p.name}`"
-              :value="p.name"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="描述（可选）">
-          <el-input v-model="importPackDesc" placeholder="例如：热点榜单一键导入" />
-        </el-form-item>
-
-        <el-alert
-          :title="`将导入 ${selectedEventIds.length} 个热点事件的要点/引用/事实/来源到素材包中`"
-          type="info"
-          show-icon
-          :closable="false"
-        />
-      </el-form>
-
-      <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importing" :disabled="!importPackName.trim()" @click="confirmImport">
-          开始导入
-        </el-button>
+        <el-button type="primary" :disabled="topicDecisions.length === 0" @click="applyTopicFilter">应用筛选</el-button>
       </template>
     </el-dialog>
 
@@ -222,12 +256,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { Refresh, MagicStick, DataAnalysis, ArrowRight } from "@element-plus/icons-vue";
-import type { DailyHotspotDetailResponse, DailyHotspotEvent, MaterialItemCreate, MaterialPack } from "@/types";
-import { buildDailyHotspots, getDailyHotspotDetail, listDailyHotspots, smartFilterDailyHotspotList } from "@/api/dailyHotspots";
+import type {
+  MaterialItemCreate,
+  MaterialPack,
+  WindowHotspotEvent,
+} from "@/types";
+import { buildWindowHotspots } from "@/api/windowHotspots";
+import { smartFilterWindowHotspotList } from "@/api/windowHotspots";
 import { batchCreateMaterialItems, createMaterialPack, listMaterialPacks } from "@/api/materials";
 import { useMaterialBasketStore } from "@/stores/materialBasket";
 import MaterialBasketDrawer from "@/components/MaterialBasketDrawer.vue";
@@ -235,15 +274,13 @@ import MaterialBasketDrawer from "@/components/MaterialBasketDrawer.vue";
 const route = useRoute();
 const router = useRouter();
 
-const todayDate = new Date();
-const pad = (n: number) => String(n).padStart(2, "0");
-const todayStr = `${todayDate.getFullYear()}-${pad(todayDate.getMonth() + 1)}-${pad(todayDate.getDate())}`;
-
-const day = ref(todayStr);
 const limit = ref(20);
-const loading = ref(false);
-const building = ref(false);
-const items = ref<DailyHotspotEvent[]>([]);
+const windowKey = ref<"today" | "week" | "month" | "range">("today");
+const rangeValue = ref<[string, string] | null>(null);
+const windowItems = ref<WindowHotspotEvent[]>([]);
+const windowLoading = ref(false);
+
+const selectedWindowRows = ref<WindowHotspotEvent[]>([]);
 
 const basket = useMaterialBasketStore();
 
@@ -252,7 +289,32 @@ const openBasket = () => {
   basketVisible.value = true;
 };
 
-const selectedEventIds = ref<number[]>([]);
+const addSelectedWindowToBasket = async () => {
+  const rows = selectedWindowRows.value;
+  if (!rows.length) {
+    ElMessage.warning("请先勾选要加入素材篮的窗口热点事件");
+    return;
+  }
+
+  addingToBasket.value = true;
+  try {
+    const toAdd: MaterialItemCreate[] = [];
+    rows.forEach((r) => toAdd.push(..._windowEventToMaterialItems(r)));
+
+    if (!toAdd.length) {
+      ElMessage.warning("未生成任何可加入的素材条目");
+      return;
+    }
+
+    basket.addMany(toAdd);
+    ElMessage.success(`已加入素材篮：${toAdd.length} 条（素材篮共 ${basket.count} 条）`);
+    basketVisible.value = true;
+  } catch (err: any) {
+    ElMessage.error(err.message || "加入素材篮失败");
+  } finally {
+    addingToBasket.value = false;
+  }
+};
 
 const importDialogVisible = ref(false);
 const importing = ref(false);
@@ -262,7 +324,7 @@ const importPackDesc = ref("");
 const importPackOptions = ref<MaterialPack[]>([]);
 
 type _TopicRow = {
-  event_id: number;
+  event_key: string;
   recommended: boolean;
   score: number;
   reason?: string | null;
@@ -279,46 +341,20 @@ const topicForm = ref({
 });
 const topicDecisions = ref<_TopicRow[]>([]);
 const topicFilterApplied = ref(false);
-const topicSelectedIds = ref<number[]>([]);
+const topicSelectedKeys = ref<string[]>([]);
 
 const displayItems = computed(() => {
-  if (!topicFilterApplied.value) return items.value;
-  const allow = new Set(topicSelectedIds.value);
-  return items.value.filter((x) => allow.has(x.id));
+  if (!topicFilterApplied.value) return windowItems.value;
+  const allow = new Set(topicSelectedKeys.value);
+  return windowItems.value.filter((x) => allow.has(windowRowKey(x)));
 });
 
-const fetchList = async () => {
-  loading.value = true;
-  try {
-    const resp = await listDailyHotspots(day.value, limit.value);
-    items.value = resp.items || [];
-    // 切换日期/重刷时，如果筛选结果不在新列表中，会自动过滤为空；这里不强制清除
-
-    // 将当前 day/limit 持久化到路由，保证从详情页返回后不重置
-    const q = { ...route.query, day: day.value, limit: String(limit.value) } as Record<string, any>;
-    router.replace({ path: "/daily-hotspots", query: q });
-  } catch (err: any) {
-    ElMessage.error(err.message || "获取热点榜单失败");
-  } finally {
-    loading.value = false;
-  }
-};
-
-const build = async () => {
-  building.value = true;
-  try {
-    const resp = await buildDailyHotspots(day.value, limit.value);
-    items.value = resp.items || [];
-    ElMessage.success("已生成榜单");
-  } catch (err: any) {
-    ElMessage.error(err.message || "生成榜单失败");
-  } finally {
-    building.value = false;
-  }
-};
+const importAlertTitle = computed(() => {
+  return `将导入 ${selectedWindowRows.value.length} 个窗口热点事件的摘要/要点/引用/来源到素材包中`;
+});
 
 const openTopicFilter = async () => {
-  if (items.value.length === 0) {
+  if (windowItems.value.length === 0) {
     ElMessage.warning("当前无榜单数据，请先生成或刷新");
     return;
   }
@@ -331,25 +367,40 @@ const runTopicFilter = async () => {
     ElMessage.warning("请先输入主题");
     return;
   }
+
+  if (windowKey.value === "range" && (!rangeValue.value || rangeValue.value.length !== 2)) {
+    ElMessage.warning("请先选择日期范围");
+    return;
+  }
+
   topicLoading.value = true;
   try {
-    const resp = await smartFilterDailyHotspotList({
-      day: day.value,
+    const rangePayload =
+      windowKey.value === "range" && rangeValue.value
+        ? {
+            start_time: `${rangeValue.value[0]} 00:00:00`,
+            end_time: `${rangeValue.value[1]} 23:59:59`,
+          }
+        : {};
+
+    const resp = await smartFilterWindowHotspotList({
+      window: windowKey.value,
       topic,
       instruction: (topicForm.value.instruction || "").trim() || undefined,
       limit: limit.value,
       temperature: 0.2,
+      ...rangePayload,
     });
 
-    const map: Record<number, DailyHotspotEvent> = {};
-    for (const it of items.value) map[it.id] = it;
+    const map: Record<string, WindowHotspotEvent> = {};
+    for (const it of windowItems.value) map[windowRowKey(it)] = it;
 
     topicDecisions.value = (resp.decisions || []).map((d) => {
-      const ev = map[d.event_id];
+      const ev = map[d.event_key];
       return {
         ...d,
         checked: !!d.recommended,
-        title: ev?.title || `#${d.event_id}`,
+        title: ev?.title || d.event_key,
         summary: (ev?.summary as string) || "",
       };
     });
@@ -361,60 +412,120 @@ const runTopicFilter = async () => {
 };
 
 const applyTopicFilter = () => {
-  const ids = topicDecisions.value.filter((x) => x.checked).map((x) => x.event_id);
-  topicSelectedIds.value = ids;
+  const keys = topicDecisions.value.filter((x) => x.checked).map((x) => x.event_key);
+  topicSelectedKeys.value = keys;
   topicFilterApplied.value = true;
   topicDialogVisible.value = false;
-  ElMessage.success(`已应用筛选：${ids.length} 条`);
-
-  // 持久化筛选条件到路由（用于从详情返回后恢复）
-  const topic = (topicForm.value.topic || "").trim();
-  const q = {
-    ...route.query,
-    day: day.value,
-    limit: String(limit.value),
-    topic,
-    topic_ids: ids.join(","),
-  } as Record<string, any>;
-  router.replace({ path: "/daily-hotspots", query: q });
+  ElMessage.success(`已应用筛选：${keys.length} 条`);
 };
 
 const clearTopicFilter = () => {
-  topicSelectedIds.value = [];
+  topicSelectedKeys.value = [];
   topicFilterApplied.value = false;
-
-  // 仅手动清除才移除路由里的筛选参数
-  const q = { ...route.query } as Record<string, any>;
-  delete q.topic;
-  delete q.topic_ids;
-  router.replace({ path: "/daily-hotspots", query: q });
 };
 
-const goDetail = (id: number) => router.push({ path: `/daily-hotspots/${id}`, query: route.query });
+const formatDateTime = (s?: string | null) => {
+  if (!s) return "";
+  return String(s).replace("T", " ").replace("Z", "");
+};
 
-const onRowClick = (row: DailyHotspotEvent, column: any) => {
-  // 中文说明：避免勾选多选框时触发行点击跳转
+const onWindowRowClick = (row: WindowHotspotEvent, column: any) => {
+  // 中文说明：避免勾选多选框时触发行点击打开详情
   if (column?.type === "selection") return;
-  goDetail(row.id);
+  goWindowDetail(row);
 };
 
-const onSelectionChange = (rows: DailyHotspotEvent[]) => {
-  selectedEventIds.value = (rows || []).map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
+const goWindowDetail = (row: WindowHotspotEvent) => {
+  const key = windowRowKey(row);
+  try {
+    sessionStorage.setItem(`window_hotspot_detail:${key}`, JSON.stringify(row));
+  } catch {
+    // ignore
+  }
+  router.push({ path: `/window-hotspots/${encodeURIComponent(key)}`, query: route.query });
 };
 
-const _defaultPackName = () => {
-  const t = (topicForm.value.topic || "").trim();
-  if (t) return t;
-  return `${day.value} 热点素材`;
+const onWindowSelectionChange = (rows: WindowHotspotEvent[]) => {
+  selectedWindowRows.value = rows || [];
 };
 
-const openImportDialog = async () => {
-  if (!selectedEventIds.value.length) {
-    ElMessage.warning("请先勾选要导入的热点事件");
+const windowRowKey = (row: WindowHotspotEvent) => {
+  const t = (row?.title || "").trim();
+  const te = (row?.event_time_end || "").trim();
+  const u = ((row?.sources || [])[0]?.url || "").trim();
+  return `${row.window || ""}|${t}|${te}|${u}`;
+};
+
+const onRangeChange = async () => {
+  if (windowKey.value !== "range") return;
+  if (!rangeValue.value || rangeValue.value.length !== 2) return;
+  await fetchWindowList();
+};
+
+const fetchWindowList = async () => {
+  if (windowKey.value === "range" && (!rangeValue.value || rangeValue.value.length !== 2)) {
+    ElMessage.warning("请先选择日期范围");
     return;
   }
-  importPackName.value = importPackName.value.trim() || _defaultPackName();
-  importPackDesc.value = importPackDesc.value || `热点榜单一键导入：${day.value}`;
+
+  windowLoading.value = true;
+  try {
+    const rangePayload =
+      windowKey.value === "range" && rangeValue.value
+        ? {
+            start_time: `${rangeValue.value[0]} 00:00:00`,
+            end_time: `${rangeValue.value[1]} 23:59:59`,
+          }
+        : {};
+    const resp = await buildWindowHotspots({
+      window: windowKey.value,
+      limit: limit.value,
+      use_llm: false,
+      ...rangePayload,
+    });
+    windowItems.value = resp.items || [];
+    selectedWindowRows.value = [];
+    topicSelectedKeys.value = [];
+    topicFilterApplied.value = false;
+  } catch (err: any) {
+    ElMessage.error(err.message || "获取窗口热点失败");
+  } finally {
+    windowLoading.value = false;
+  }
+};
+
+const refreshCurrent = async () => {
+  await fetchWindowList();
+};
+
+const onLimitChange = async () => {
+  await fetchWindowList();
+};
+
+const _defaultWindowPackName = () => {
+  const labelMap: Record<string, string> = {
+    today: "今日",
+    week: "本周",
+    month: "本月",
+    range: "范围",
+  };
+  const w = windowKey.value;
+  return `${labelMap[w] || w} 窗口热点素材`;
+};
+
+const openWindowImportDialog = async () => {
+  if (!selectedWindowRows.value.length) {
+    ElMessage.warning("请先勾选要导入的窗口热点事件");
+    return;
+  }
+  importPackName.value = importPackName.value.trim() || _defaultWindowPackName();
+  if (!importPackDesc.value) {
+    if (windowKey.value === "range" && rangeValue.value) {
+      importPackDesc.value = `窗口热点一键导入：范围 ${rangeValue.value[0]}~${rangeValue.value[1]}`;
+    } else {
+      importPackDesc.value = `窗口热点一键导入：${windowKey.value}`;
+    }
+  }
 
   try {
     const resp = await listMaterialPacks({ limit: 200, offset: 0 });
@@ -436,51 +547,58 @@ const _pickOrCreatePackByName = async (name: string): Promise<MaterialPack> => {
   return await createMaterialPack({ name: n, description: (importPackDesc.value || "").trim() || undefined });
 };
 
-const _detailToMaterialItems = (detail: DailyHotspotDetailResponse): MaterialItemCreate[] => {
-  const eventId = Number(detail.event?.id);
-  const eventTitle = detail.event?.title || "";
+const _windowEventToMaterialItems = (ev: WindowHotspotEvent): MaterialItemCreate[] => {
+  const labelMap: Record<string, string> = {
+    today: "今日",
+    week: "本周",
+    month: "本月",
+    range: "范围",
+  };
   const baseMeta = {
-    event_id: eventId,
-    event_title: eventTitle,
-    event_day: detail.event?.day,
-    _source: "daily_hotspot",
+    event_title: ev.title,
+    window: ev.window,
+    window_key: ev.window,
+    window_label: labelMap[String(ev.window || "")] || String(ev.window || ""),
+    event_time_end: ev.event_time_end,
+    event_time_start: ev.event_time_start,
+    flags: ev.flags || undefined,
+    _source: "window_hotspot",
   };
 
   const arr: MaterialItemCreate[] = [];
-  (detail.bullets || []).forEach((it: any) => {
+
+  const summary = (ev.summary || "").trim();
+  if (summary) {
+    arr.push({
+      item_type: "note",
+      text: summary,
+      meta: { ...baseMeta, note_type: "summary" },
+    });
+  }
+
+  (ev.bullets || []).forEach((it: any) => {
     if (!it?.text) return;
     arr.push({
       item_type: "bullet",
       text: String(it.text),
       source_url: it.source_url || undefined,
       source_content_id: it.source_content_id || undefined,
-      source_event_id: eventId,
-      meta: { ...baseMeta, hotspot_item_id: it.id, hotspot_item_type: "bullet" },
+      meta: { ...baseMeta, hotspot_item_type: "bullet", position: it.position, score: it.score },
     });
   });
-  (detail.quotes || []).forEach((it: any) => {
+
+  (ev.quotes || []).forEach((it: any) => {
     if (!it?.text) return;
     arr.push({
       item_type: "quote",
       text: String(it.text),
       source_url: it.source_url || undefined,
       source_content_id: it.source_content_id || undefined,
-      source_event_id: eventId,
-      meta: { ...baseMeta, hotspot_item_id: it.id, hotspot_item_type: "quote" },
+      meta: { ...baseMeta, hotspot_item_type: "quote", position: it.position, score: it.score },
     });
   });
-  (detail.facts || []).forEach((it: any) => {
-    if (!it?.text) return;
-    arr.push({
-      item_type: "fact",
-      text: String(it.text),
-      source_url: it.source_url || undefined,
-      source_content_id: it.source_content_id || undefined,
-      source_event_id: eventId,
-      meta: { ...baseMeta, hotspot_item_id: it.id, hotspot_item_type: "fact" },
-    });
-  });
-  (detail.sources || []).forEach((s: any) => {
+
+  (ev.sources || []).forEach((s: any) => {
     const url = (s?.url || "").trim();
     if (!url) return;
     const title = (s?.title || "").trim();
@@ -489,41 +607,17 @@ const _detailToMaterialItems = (detail: DailyHotspotDetailResponse): MaterialIte
       text: title ? `${title}\n${url}` : url,
       source_url: url,
       source_content_id: s.content_id || undefined,
-      source_event_id: eventId,
-      meta: { ...baseMeta, weight: s.weight, hotspot_source_id: s.id },
+      meta: {
+        ...baseMeta,
+        domain: s.domain,
+        is_list_parent: s.is_list_parent,
+        time_confidence: s.time_confidence,
+        source_event_time_end: s.event_time_end,
+      },
     });
   });
 
   return arr;
-};
-
-const addSelectedToBasket = async () => {
-  const ids = selectedEventIds.value;
-  if (!ids.length) {
-    ElMessage.warning("请先勾选要加入素材篮的热点事件");
-    return;
-  }
-
-  addingToBasket.value = true;
-  try {
-    // 中文说明：并发拉取热点详情并转成素材条目（后续如数据量变大可加并发限制）
-    const details = await Promise.all(ids.map((id) => getDailyHotspotDetail(id)));
-    const toAdd: MaterialItemCreate[] = [];
-    details.forEach((d) => toAdd.push(..._detailToMaterialItems(d)));
-
-    if (!toAdd.length) {
-      ElMessage.warning("未生成任何可加入的素材条目");
-      return;
-    }
-
-    basket.addMany(toAdd);
-    ElMessage.success(`已加入素材篮：${toAdd.length} 条（素材篮共 ${basket.count} 条）`);
-    basketVisible.value = true;
-  } catch (err: any) {
-    ElMessage.error(err.message || "加入素材篮失败");
-  } finally {
-    addingToBasket.value = false;
-  }
 };
 
 const onBasketWritten = (packId: number) => {
@@ -540,9 +634,9 @@ const confirmImport = async () => {
     ElMessage.warning("请先填写素材包名称");
     return;
   }
-  const ids = selectedEventIds.value;
-  if (!ids.length) {
-    ElMessage.warning("请先勾选要导入的热点事件");
+  const rows = selectedWindowRows.value;
+  if (!rows.length) {
+    ElMessage.warning("请先勾选要导入的窗口热点事件");
     return;
   }
 
@@ -550,10 +644,8 @@ const confirmImport = async () => {
   try {
     const pack = await _pickOrCreatePackByName(name);
 
-    // 中文说明：并发拉取热点详情并转成素材条目（可能较多，后续可加并发限制）
-    const details = await Promise.all(ids.map((id) => getDailyHotspotDetail(id)));
     const items: MaterialItemCreate[] = [];
-    details.forEach((d) => items.push(..._detailToMaterialItems(d)));
+    rows.forEach((r) => items.push(..._windowEventToMaterialItems(r)));
 
     if (!items.length) {
       ElMessage.warning("未导入到任何素材条目");
@@ -570,8 +662,6 @@ const confirmImport = async () => {
   }
 };
 
-const isToday = (d: string) => d === todayStr;
-
 const getRankClass = (rank: number) => {
   if (rank === 1) return "rank-1";
   if (rank === 2) return "rank-2";
@@ -580,28 +670,29 @@ const getRankClass = (rank: number) => {
 };
 
 onMounted(async () => {
-  // 从路由恢复 day/limit/筛选（从详情返回时不会丢）
-  const qDay = route.query.day;
-  if (typeof qDay === "string" && qDay) day.value = qDay;
   const qLimit = route.query.limit;
   if (typeof qLimit === "string" && qLimit && !Number.isNaN(Number(qLimit))) limit.value = Number(qLimit);
-
-  const qTopic = route.query.topic;
-  const qIds = route.query.topic_ids;
-  if (typeof qTopic === "string" && qTopic && typeof qIds === "string" && qIds.trim()) {
-    topicForm.value.topic = qTopic;
-    const ids = qIds
-      .split(",")
-      .map((x) => Number(x))
-      .filter((x) => Number.isFinite(x) && x > 0);
-    if (ids.length) {
-      topicSelectedIds.value = ids;
-      topicFilterApplied.value = true;
-    }
+  const qWin = route.query.window;
+  if (typeof qWin === "string" && ["today", "week", "month"].includes(qWin)) {
+    windowKey.value = qWin as any;
+  } else if (qWin === "realtime") {
+    windowKey.value = "today";
   }
 
-  await fetchList();
+  await fetchWindowList();
 });
+
+watch(
+  () => [windowKey.value, limit.value],
+  () => {
+    const q = {
+      ...route.query,
+      window: windowKey.value,
+      limit: String(limit.value),
+    } as Record<string, any>;
+    router.replace({ path: "/daily-hotspots", query: q });
+  }
+);
 </script>
 
 <style scoped>
@@ -638,12 +729,25 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .left-panel {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1 1 520px;
+}
+
+.right-panel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1 1 420px;
 }
 
 .event-title {
@@ -680,5 +784,9 @@ onMounted(async () => {
   gap: 4px;
   font-weight: 600;
   color: #303133;
+}
+
+.text-sm {
+  font-size: 12px;
 }
 </style>

@@ -5,8 +5,7 @@ from datetime import date, timedelta
 from celery import shared_task
 
 from app.core.config import get_settings
-from app.db.session import SessionLocal
-from app.services.daily_hotspot_builder import build_daily_hotspots
+from app.tasks.window_hotspots import build_window_hotspots_task
 
 
 def _calc_target_day(today: date) -> date:
@@ -17,30 +16,23 @@ def _calc_target_day(today: date) -> date:
 
 @shared_task(name="app.tasks.daily_hotspots.build_daily_hotspots_task")
 def build_daily_hotspots_task() -> dict:
-    """Celery 任务：按配置生成某日热点榜单（TopN）。
+    """兼容任务：历史日榜任务入口（已废弃）。
 
-    - 目标日期通过 DAILY_HOTSPOT_DAY_OFFSET 控制
-    - 若当天无采集数据则跳过（不算失败）
+    中文说明：
+    - 前端与产品逻辑已切换到“窗口热点”（实时计算、不落库）
+    - 这里保留同名 task，避免旧的 beat/运维脚本仍调用导致报错
+    - 实际执行窗口热点预热任务 build_window_hotspots_task
     """
 
-    settings = get_settings()
+    # 保留 day 字段以兼容旧监控面板/日志格式
     target_day = _calc_target_day(date.today())
 
-    db = SessionLocal()
-    try:
-        events = build_daily_hotspots(db, day=target_day, limit=int(settings.DAILY_HOTSPOT_LIMIT or 20))
-        db.commit()
-        return {
-            "status": "ok",
-            "day": target_day.isoformat(),
-            "event_count": len(events),
-        }
-    except ValueError as e:
-        db.rollback()
-        return {
-            "status": "skipped",
-            "day": target_day.isoformat(),
-            "reason": str(e),
-        }
-    finally:
-        db.close()
+    res = build_window_hotspots_task()
+    status = res.get("status") or "ok"
+    return {
+        "status": status,
+        "day": target_day.isoformat(),
+        "window_counts": res.get("window_counts"),
+        "total": res.get("total"),
+        "reason": res.get("reason"),
+    }

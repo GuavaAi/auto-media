@@ -247,6 +247,84 @@ export interface CrawlRecordListResponse {
   items: CrawlRecord[];
 }
 
+export interface WindowHotspotBuildRequest {
+  window: string;
+  limit?: number;
+  provider?: string;
+  use_llm?: boolean;
+  start_time?: string;
+  end_time?: string;
+}
+
+export interface WindowHotspotItem {
+  type: string;
+  text: string;
+  score: number;
+  source_url?: string | null;
+  source_content_id?: number | null;
+  position: number;
+  extra?: Record<string, unknown> | null;
+}
+
+export interface WindowHotspotSource {
+  content_id?: number | null;
+  url?: string | null;
+  title?: string | null;
+  domain?: string | null;
+  is_list_parent?: boolean;
+  time_confidence: number;
+  event_time_end?: string | null;
+}
+
+export interface WindowHotspotEvent {
+  window: string;
+  title: string;
+  summary?: string | null;
+  hot_score: number;
+  event_time_start?: string | null;
+  event_time_end?: string | null;
+  source_count: number;
+  uniq_url_cnt: number;
+  uniq_domain_cnt: number;
+  domain_penalty?: number;
+  recency?: number;
+  flags?: Record<string, boolean> | null;
+  extra?: Record<string, unknown> | null;
+  bullets: WindowHotspotItem[];
+  quotes: WindowHotspotItem[];
+  sources: WindowHotspotSource[];
+}
+
+export interface WindowHotspotListResponse {
+  window: string;
+  items: WindowHotspotEvent[];
+}
+
+export interface WindowHotspotListSmartFilterRequest {
+  window: string;
+  topic: string;
+  provider?: string;
+  instruction?: string;
+  limit?: number;
+  temperature?: number;
+  start_time?: string;
+  end_time?: string;
+}
+
+export interface WindowHotspotListSmartFilterDecision {
+  event_key: string;
+  recommended: boolean;
+  score: number;
+  reason?: string | null;
+}
+
+export interface WindowHotspotListSmartFilterResponse {
+  window: string;
+  topic: string;
+  recommended_event_keys: string[];
+  decisions: WindowHotspotListSmartFilterDecision[];
+}
+
 export interface DailyHotspotEvent {
   id: number;
   day: string;

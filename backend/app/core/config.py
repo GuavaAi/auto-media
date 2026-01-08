@@ -43,6 +43,29 @@ class Settings:
         self.DAILY_HOTSPOT_LIMIT: int = int(os.getenv("DAILY_HOTSPOT_LIMIT", "20"))
         self.DAILY_HOTSPOT_DAY_OFFSET: int = int(os.getenv("DAILY_HOTSPOT_DAY_OFFSET", "-1"))
 
+        # 窗口热点（实时计算）定时预热：用于健康检查/可选缓存（当前不落库）
+        self.WINDOW_HOTSPOT_BEAT_ENABLED: bool = os.getenv(
+            "WINDOW_HOTSPOT_BEAT_ENABLED", "false"
+        ).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        self.WINDOW_HOTSPOT_CRON: str = os.getenv("WINDOW_HOTSPOT_CRON", "*/15 * * * *")
+        self.WINDOW_HOTSPOT_LIMIT: int = int(os.getenv("WINDOW_HOTSPOT_LIMIT", "20"))
+        # 中文说明：支持多窗口预热，例如 "today,week,month"
+        self.WINDOW_HOTSPOT_WINDOWS: str = os.getenv("WINDOW_HOTSPOT_WINDOWS", "today")
+        self.WINDOW_HOTSPOT_USE_LLM: bool = os.getenv(
+            "WINDOW_HOTSPOT_USE_LLM", "false"
+        ).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        self.WINDOW_HOTSPOT_PROVIDER: str | None = os.getenv("WINDOW_HOTSPOT_PROVIDER")
+
         # Morning Brief (Scenario C)
         self.MORNING_BRIEF_ENABLED: bool = os.getenv(
             "MORNING_BRIEF_ENABLED", "false"

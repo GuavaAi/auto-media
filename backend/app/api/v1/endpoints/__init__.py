@@ -4,6 +4,7 @@ from app.api.v1.endpoints import (  # noqa: F401
     auth,
     crawl_record,
     daily_hotspot,
+    window_hotspot,
     dashboard,
     datasource,
     docs,

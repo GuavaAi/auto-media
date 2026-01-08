@@ -54,9 +54,9 @@ const mainChildren: RouteRecordRaw[] = [
     component: () => import("@/views/DailyHotspotPage.vue"),
   },
   {
-    path: "daily-hotspots/:id",
-    name: "DailyHotspotDetail",
-    component: () => import("@/views/DailyHotspotDetail.vue"),
+    path: "window-hotspots/:id",
+    name: "WindowHotspotDetail",
+    component: () => import("@/views/WindowHotspotDetail.vue"),
     props: true,
   },
   {
