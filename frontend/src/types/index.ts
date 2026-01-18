@@ -157,6 +157,23 @@ export interface AliyunUnifiedSearchIngestResponse {
   items: MaterialItemCreate[];
 }
 
+export interface SerpapiSearchIngestRequest {
+  query: string;
+  limit?: number;
+  engine?: string;
+  tbs?: string;
+  hl?: string;
+  gl?: string;
+  location?: string;
+  api_key?: string;
+}
+
+export interface SerpapiSearchIngestResponse {
+  ingested: number;
+  skipped: number;
+  items: MaterialItemCreate[];
+}
+
 export interface ApiKeyCreate {
   provider: string;
   name?: string | null;

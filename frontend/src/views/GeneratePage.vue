@@ -1,41 +1,47 @@
 <template>
-  <div class="page-container">
-    <!-- 顶部状态栏 -->
-    <div class="status-bar">
-      <el-alert
-        title="将数据与灵感，转化为高质量内容。填入主题和大纲，选择模型，一键生成 Markdown/HTML。"
-        type="info"
-        show-icon
-        :closable="false"
-        class="page-tip"
-      />
-      <div class="stat-group">
-        <div class="stat-item">
-          <span class="label">当前模型</span>
-          <span class="value">{{ currentProviderLabel }}</span>
-        </div>
-        <el-divider direction="vertical" />
-        <div class="stat-item">
-          <span class="label">推荐字数</span>
-          <span class="value">{{ lengthDisplay }}</span>
-        </div>
-      </div>
-    </div>
+  <div class="page-container notebooklm-page">
+    <div class="notebooklm-layout">
+      <ResourceSidebar :onSearch="sidebarSearch" :onUrl="sidebarUrl" :onPaste="sidebarPaste" />
 
-    <el-row :gutter="24" class="main-row">
-      <!-- 左侧表单区 -->
-      <el-col :span="15" :lg="16" :xl="17">
-        <el-card class="form-card" shadow="never">
-          <template #header>
-            <div class="card-header">
-              <span class="title">配置参数</span>
-              <div class="header-actions">
-                <el-button link type="primary" @click="reset">重置配置</el-button>
+      <WorkspacePanel>
+        <template #status>
+          <div class="status-bar">
+            <el-alert
+              title="将数据与灵感，转化为高质量内容。填入主题和大纲，选择模型，一键生成 Markdown/HTML。"
+              type="info"
+              show-icon
+              :closable="false"
+              class="page-tip"
+            />
+            <div class="stat-group">
+              <div class="stat-item">
+                <span class="label">当前模型</span>
+                <span class="value">{{ currentProviderLabel }}</span>
+              </div>
+              <el-divider direction="vertical" />
+              <div class="stat-item">
+                <span class="label">推荐字数</span>
+                <span class="value">{{ lengthDisplay }}</span>
               </div>
             </div>
-          </template>
-          
-          <el-form :model="form" label-position="top" class="generate-form">
+          </div>
+        </template>
+
+        <template #main>
+          <el-row :gutter="24" class="main-row">
+            <!-- 左侧表单区 -->
+            <el-col :span="15" :lg="16" :xl="17">
+              <el-card class="form-card" shadow="never">
+                <template #header>
+                  <div class="card-header">
+                    <span class="title">配置参数</span>
+                    <div class="header-actions">
+                      <el-button link type="primary" @click="reset">重置配置</el-button>
+                    </div>
+                  </div>
+                </template>
+                
+                <el-form :model="form" label-position="top" class="generate-form">
             <el-row :gutter="20">
               <el-col :span="24">
                 <el-form-item label="核心主题 / 标题" required>
@@ -234,8 +240,8 @@
               </el-button>
             </div>
           </el-form>
-        </el-card>
-      </el-col>
+              </el-card>
+            </el-col>
 
       <!-- 右侧结果/提示区 -->
       <el-col :span="9" :lg="8" :xl="7">
@@ -294,23 +300,47 @@
           </el-tabs>
         </el-card>
 
-        <!-- 提示卡片 (当没有结果时显示或一直显示在底部) -->
+        <!-- 提示卡片 -->
         <el-card class="tips-card" shadow="never" :class="{ 'mt-4': !!result }">
           <template #header>
             <div class="card-header">
               <span class="title">写作助手</span>
-              <el-icon><Reading /></el-icon>
+              <el-icon class="header-icon"><Reading /></el-icon>
             </div>
           </template>
-          <ul class="tips-list">
-            <li><span class="bullet">🎯</span> <strong>主题明确</strong>：越具体的主题，生成的深度越好。</li>
-            <li><span class="bullet">📝</span> <strong>大纲引导</strong>：3-5 个要点能有效控制文章结构。</li>
-            <li><span class="bullet">🌡️</span> <strong>温度调节</strong>：0.7 适合大多数创作，1.0 更具创意。</li>
-            <li><span class="bullet">🔗</span> <strong>数据引用</strong>：填写数据源 ID 可引用抓取的素材。</li>
-          </ul>
+          <div class="tips-grid">
+            <div class="tip-item">
+              <div class="tip-icon-wrapper">🎯</div>
+              <div class="tip-content">
+                <div class="tip-title">主题明确</div>
+                <div class="tip-desc">越具体的主题，生成的深度越好。</div>
+              </div>
+            </div>
+            <div class="tip-item">
+              <div class="tip-icon-wrapper">📝</div>
+              <div class="tip-content">
+                <div class="tip-title">大纲引导</div>
+                <div class="tip-desc">3-5 个要点能有效控制文章结构。</div>
+              </div>
+            </div>
+            <div class="tip-item">
+              <div class="tip-icon-wrapper">🌡️</div>
+              <div class="tip-content">
+                <div class="tip-title">温度调节</div>
+                <div class="tip-desc">0.7 适合大多数创作，1.0 更具创意。</div>
+              </div>
+            </div>
+            <div class="tip-item">
+              <div class="tip-icon-wrapper">🔗</div>
+              <div class="tip-content">
+                <div class="tip-title">数据引用</div>
+                <div class="tip-desc">填写数据源 ID 可引用抓取的素材。</div>
+              </div>
+            </div>
+          </div>
         </el-card>
-      </el-col>
-    </el-row>
+            </el-col>
+          </el-row>
 
     <el-dialog
       v-model="smartPickVisible"
@@ -416,6 +446,10 @@
         </div>
       </template>
     </el-dialog>
+
+        </template>
+      </WorkspacePanel>
+    </div>
   </div>
 </template>
 
@@ -433,9 +467,20 @@ import {
   MagicStick,
 } from "@element-plus/icons-vue";
 import { generateArticle, listPromptTemplates } from "@/api/articles";
-import { listMaterialPacks, createMaterialPack, batchCreateMaterialItems, getMaterialPackDetail } from "@/api/materials";
+import {
+  listMaterialPacks,
+  createMaterialPack,
+  batchCreateMaterialItems,
+  getMaterialPackDetail,
+  firecrawlSearchIngest,
+  aliyunUnifiedSearchIngest,
+  serpapiSearchIngest,
+} from "@/api/materials";
 import { getDailyHotspotDetail, listDailyHotspots, smartFilterDailyHotspotList } from "@/api/dailyHotspots";
+import { extractCrawlRecordMaterials, quickFetchCrawlRecord } from "@/api/crawlRecords";
 import ModelProviderSelect from "@/components/ModelProviderSelect.vue";
+import ResourceSidebar from "@/views/generate/layout/ResourceSidebar.vue";
+import WorkspacePanel from "@/views/generate/layout/WorkspacePanel.vue";
 import type {
   Article,
   DailyHotspotDetailResponse,
@@ -449,6 +494,7 @@ import type {
   PromptTemplate,
 } from "@/types";
 import { getProviderCn } from "@/utils/providerNames";
+import { useMaterialBasketStore } from "@/stores/materialBasket";
 
 const router = useRouter();
 const route = useRoute();
@@ -507,6 +553,163 @@ const smartRecommendedEventIds = ref<number[]>([]);
 const selectedSmartEventIds = ref<number[]>([]);
 
 const basketItems = ref<MaterialItemCreate[]>([]);
+
+const basket = useMaterialBasketStore();
+
+const _norm = (s: string) => (s || "").trim().replace(/\s+/g, " ");
+
+const _dedupeMaterialCreates = (items: MaterialItemCreate[]) => {
+  const existed = new Set<string>();
+  const out: MaterialItemCreate[] = [];
+  for (const it of items || []) {
+    const t = _norm(it.item_type || "").toLowerCase();
+    const text = _norm(it.text || "");
+    const key = `${t}|${text}`;
+    if (!key || key.endsWith("|")) continue;
+    if (existed.has(key)) continue;
+    existed.add(key);
+    out.push(it);
+  }
+  return out;
+};
+
+const sidebarSearch = async (payload: { engine: "firecrawl" | "aliyun" | "serpapi"; query: string; limit: number }) => {
+  if (payload.engine === "firecrawl") {
+    const resp = await firecrawlSearchIngest({ query: payload.query, limit: payload.limit });
+    return resp.items || [];
+  }
+  if (payload.engine === "aliyun") {
+    const resp = await aliyunUnifiedSearchIngest({ query: payload.query, include_main_text: true });
+    return resp.items || [];
+  }
+  const resp = await serpapiSearchIngest({ query: payload.query, limit: payload.limit });
+  return resp.items || [];
+};
+
+const sidebarUrl = async (payload: { url: string }) => {
+  const url = (payload.url || "").trim();
+  if (!(url.startsWith("http://") || url.startsWith("https://"))) {
+    throw new Error("URL 必须以 http:// 或 https:// 开头");
+  }
+  const rec: any = await quickFetchCrawlRecord({ url, crawler_engine: "playwright" });
+  const recId = Number(rec?.id);
+  if (!recId) {
+    throw new Error("快捷抓取失败：未返回 record_id");
+  }
+  const resp = await extractCrawlRecordMaterials(recId, { top_k: 10, include_source: true });
+  return resp.items || [];
+};
+
+const sidebarPaste = async (payload: { text: string }) => {
+  const t = (payload.text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!t) return [];
+  return [
+    {
+      item_type: "note",
+      text: t,
+      meta: { from: "paste" },
+    },
+  ] as MaterialItemCreate[];
+};
+
+const _formatLocalYmdCompact = (d: Date) => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}`;
+};
+
+const _rand4 = () => String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+
+const _findOrCreateTempPack = async (topic: string | undefined): Promise<MaterialPack> => {
+  const ymd = _formatLocalYmdCompact(new Date());
+  const tp = (topic || "").trim();
+  const prefix = tp ? `【临时】${tp}-${ymd}-` : `【临时】${ymd}-`;
+
+  const resp = await listMaterialPacks({ keyword: prefix, limit: 50, offset: 0 });
+  const existed = (resp.items || []).find((p) => (p.name || "").trim().startsWith(prefix));
+  if (existed) return existed;
+
+  const name = `${prefix}${_rand4()}`;
+  return await createMaterialPack({ name, description: `临时素材包（自动生成）${ymd}` });
+};
+
+const _selectedPackItemsToCreates = async (): Promise<MaterialItemCreate[]> => {
+  const pid = form.material_pack_id;
+  if (!pid) return [];
+
+  // 中文说明：把用户已选素材包（及其自选条目）“合并追加”写入临时包，确保素材篮 + 素材包都能注入生成。
+  let items: MaterialItem[] = materialPackDetailItems.value;
+  if (!items.length || (items[0] && items[0].pack_id !== pid)) {
+    try {
+      const resp = await getMaterialPackDetail(pid);
+      items = resp.items || [];
+    } catch {
+      items = [];
+    }
+  }
+
+  let picked = items;
+  if (materialMode.value === "custom") {
+    const idSet = new Set(selectedMaterialItemIds.value || []);
+    picked = items.filter((x) => idSet.has(x.id));
+  }
+
+  return picked.map((x) => ({
+    item_type: x.item_type,
+    text: x.text,
+    source_url: x.source_url,
+    source_content_id: x.source_content_id,
+    source_event_id: x.source_event_id,
+    meta: x.meta,
+  }));
+};
+
+const lastWriteFingerprint = ref<string | null>(null);
+const lastWritePackId = ref<number | null>(null);
+
+const _buildWriteFingerprint = (items: MaterialItemCreate[]) => {
+  return (items || [])
+    .map((x) => `${_norm(x.item_type || "").toLowerCase()}|${_norm(x.text || "")}`)
+    .join("\n");
+};
+
+const prepareTempPackForGeneration = async (payload: GenerationRequest) => {
+  if (basket.selectedCount === 0) return;
+
+  const pack = await _findOrCreateTempPack(form.topic);
+  const fromBasket = basket.selectedItems.map((x) => ({
+    item_type: x.item_type,
+    text: x.text,
+    source_url: x.source_url,
+    source_content_id: x.source_content_id,
+    source_event_id: x.source_event_id,
+    meta: x.meta,
+  }));
+  const fromSelectedPack = await _selectedPackItemsToCreates();
+  const merged = _dedupeMaterialCreates([...(fromSelectedPack || []), ...(fromBasket || [])]);
+
+  const fp = _buildWriteFingerprint(merged);
+  if (lastWritePackId.value === pack.id && lastWriteFingerprint.value === fp) {
+    payload.material_pack_id = pack.id;
+    payload.material_item_ids = undefined;
+    return;
+  }
+
+  await batchCreateMaterialItems(pack.id, { items: merged });
+  await loadMaterialPacks();
+
+  lastWritePackId.value = pack.id;
+  lastWriteFingerprint.value = fp;
+
+  payload.material_pack_id = pack.id;
+  payload.material_item_ids = undefined;
+
+  form.material_pack_id = pack.id;
+  form.material_item_ids = undefined;
+  materialMode.value = "all";
+  selectedMaterialItemIds.value = [];
+};
 
 const filteredMaterialItems = computed(() => {
   const kw = (materialKeyword.value || "").trim();
@@ -982,6 +1185,9 @@ const onGenerate = async () => {
       payload.template_key = undefined;
       payload.template_version = undefined;
     }
+
+    await prepareTempPackForGeneration(payload);
+
     const data = await generateArticle(payload);
     result.value = data;
     ElMessage.success("生成成功");
@@ -1022,14 +1228,17 @@ const goArticleDetail = () => {
 
 <style scoped>
 .page-container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  min-height: 100vh;
+  background: #f8fafc;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
-.main-row {
-  margin-left: 0 !important;
-  margin-right: 0 !important;
+.notebooklm-layout {
+  display: flex;
+  align-items: flex-start;
+  background: #f8fafc;
+  min-height: 100vh;
 }
 
 .status-bar {
@@ -1041,86 +1250,218 @@ const goArticleDetail = () => {
 
 .page-tip {
   flex: 1;
+  border: none !important;
+  background-color: #f1f5f9 !important;
+  padding: 8px 16px;
+}
+
+.page-tip :deep(.el-alert__title) {
+  font-size: 13px;
+  color: #64748b;
 }
 
 .stat-group {
   display: flex;
   align-items: center;
+  gap: 16px;
   background: #fff;
-  padding: 8px 16px;
-  border-radius: 4px;
-  border: 1px solid #e4e7ed;
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-width: 60px;
 }
 
 .stat-item .label {
   font-size: 10px;
-  color: #909399;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .stat-item .value {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 14px;
-  color: #303133;
+  color: #1e293b;
+}
+
+.form-card, .result-card {
+  margin-bottom: 20px;
+  background: #fff;
+  border: 1px solid #eef2f6;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.smart-tip {
+  margin-bottom: 20px;
+  border: none !important;
+  background-color: #f0f9ff !important;
+}
+
+.smart-tip :deep(.el-alert__title) {
+  color: #0369a1;
+  font-size: 13px;
+}
+
+.smart-table {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #f1f5f9;
+}
+
+.smart-table :deep(.el-table__header) th {
+  background-color: #f8fafc;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.smart-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.dialog-footer {
+  padding-top: 20px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.form-card :deep(.el-card__header), 
+.result-card :deep(.el-card__header) {
+  padding: 14px 20px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .card-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .card-header .title {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 15px;
+  color: #1e293b;
 }
 
 .topic-input :deep(.el-input__wrapper) {
-  padding-left: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 4px 12px;
 }
 
-.form-footer {
-  margin-top: 24px;
+.advanced-panel {
+  margin-top: 20px;
+}
+
+.advanced-header {
   display: flex;
-  justify-content: center;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background-color: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s;
 }
 
-.submit-btn {
-  width: 200px;
+.advanced-header:hover {
+  background-color: #f1f5f9;
+}
+
+.advanced-title {
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 1px;
+  color: #64748b;
+}
+
+.advanced-chevron {
+  color: #94a3b8;
+  font-size: 18px;
+  transition: transform 0.2s;
+}
+
+.advanced-chevron.open {
+  transform: rotate(90deg);
+}
+
+.advanced-body {
+  padding: 16px 4px 0;
+}
+
+.advanced-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.advanced-grid.grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.advanced-grid.grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.preview-content {
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #f1f5f9;
+  border-radius: 8px;
+  max-height: 500px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.code-block {
+  background: #f8fafc;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #475569;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  margin: 0;
+  max-height: 400px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .result-meta {
   margin-bottom: 16px;
-}
-
-.meta-item {
-  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .meta-item .label {
-  font-size: 12px;
-  color: #909399;
-  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   margin-bottom: 4px;
+  display: block;
 }
 
 .meta-item p {
   margin: 0;
+  font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: #1e293b;
 }
 
 .summary-text {
-  font-size: 13px;
   line-height: 1.5;
-  color: #606266;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   line-clamp: 3;
@@ -1131,89 +1472,52 @@ const goArticleDetail = () => {
 .meta-tags {
   display: flex;
   gap: 8px;
-  margin-top: 8px;
 }
 
 .result-tabs {
   margin-top: 16px;
 }
 
-.code-block {
-  background: #f5f7fa;
-  padding: 12px;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #303133;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  margin: 0;
-  max-height: 400px;
-  overflow-y: auto;
+.result-tabs :deep(.el-tabs__content) {
+  padding: 12px 0 0;
 }
 
-.preview-content {
-  padding: 12px;
-  background: #fff;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  max-height: 400px;
-  overflow-y: auto;
+.form-footer {
+  margin-top: 24px;
 }
 
-.material-picker {
-  width: 100%;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 10px;
-  background: #fff;
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .material-pack-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: 12px;
+  width: 100%;
 }
 
 .material-pack-select {
   flex: 1;
-  min-width: 0;
 }
 
-.smart-pick-btn {
-  white-space: nowrap;
-}
-
-.smart-tip {
-  margin-bottom: 10px;
-}
-
-.smart-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 6px;
-  flex-wrap: wrap;
-}
-
-.smart-table {
-  width: 100%;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
+.material-picker {
+  border: 1px solid #f1f5f9;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fcfdfe;
 }
 
 .material-picker-top {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
 .material-item-row {
-  padding: 6px 4px;
-  border-bottom: 1px dashed #f0f0f0;
+  padding: 8px 4px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .mi-meta {
@@ -1224,125 +1528,110 @@ const goArticleDetail = () => {
 }
 
 .mi-id {
-  color: #909399;
-  font-size: 12px;
+  color: #94a3b8;
+  font-size: 11px;
 }
 
 .mi-text {
-  color: #303133;
+  font-size: 13px;
+  color: #475569;
 }
 
 .material-picker-actions {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-top: 8px;
-}
-
-.mi-count {
-  color: #909399;
+  align-items: center;
+  margin-top: 12px;
   font-size: 12px;
 }
 
-.tips-list {
-  padding-left: 0;
-  list-style: none;
-  margin: 0;
+.mi-count {
+  color: #94a3b8;
 }
 
-.tips-list li {
-  font-size: 13px;
-  color: #606266;
-  margin-bottom: 12px;
-  line-height: 1.5;
+/* 写作助手卡片样式优化 */
+.tips-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.tips-card :deep(.el-card__header) {
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tips-card .card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  gap: 8px;
 }
 
-.tips-list .bullet {
-  margin-right: 8px;
+.tips-card .header-icon {
+  color: #3b82f6;
+  font-size: 18px;
+}
+
+.tips-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.tip-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 8px;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.tip-item:hover {
+  background: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+}
+
+.tip-icon-wrapper {
+  width: 36px;
+  height: 36px;
+  background: #fff;
+  border: 1px solid #eef2f6;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: all 0.2s ease;
+}
+
+.tip-item:hover .tip-icon-wrapper {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.tip-content {
+  flex: 1;
+}
+
+.tip-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.tip-desc {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.6;
 }
 
 .mt-4 {
   margin-top: 16px;
-}
-
-/* 响应式调整 */
-@media (max-width: 992px) {
-  .status-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .stat-group {
-    justify-content: center;
-  }
-}
-
-/* 高级设置（自定义折叠面板） */
-.advanced-panel {
-  margin-top: 12px;
-  margin-bottom: 16px;
-}
-
-.advanced-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  background-color: #f9fafb;
-  border-radius: 6px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.advanced-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #606266;
-}
-
-.advanced-chevron {
-  color: #909399;
-  font-size: 18px;
-  transform: rotate(0deg);
-  transition: transform 0.15s ease;
-}
-
-.advanced-chevron.open {
-  transform: rotate(90deg);
-}
-
-.advanced-body {
-  padding: 16px 0 0;
-  overflow-x: hidden;
-}
-
-.advanced-grid {
-  display: grid;
-  gap: 20px;
-  width: 100%;
-  margin-bottom: 16px;
-}
-
-.advanced-grid.grid-2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.advanced-grid.grid-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-@media (max-width: 992px) {
-  .advanced-grid.grid-3 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 640px) {
-  .advanced-grid.grid-2,
-  .advanced-grid.grid-3 {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

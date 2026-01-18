@@ -14,8 +14,7 @@
           @keyup.enter="fetchList"
         />
         <el-button @click="openBasket">素材篮 ({{ basket.count }})</el-button>
-        <el-button @click="openFirecrawl">Firecrawl 搜索</el-button>
-        <el-button @click="openAliyun">阿里统一搜索</el-button>
+        <el-button @click="openUnifiedSearch">统一搜索</el-button>
         <el-button @click="fetchList" :loading="loading">刷新</el-button>
         <el-button type="primary" @click="openCreate">新建素材包</el-button>
       </div>
@@ -72,92 +71,17 @@
 
     <MaterialBasketDrawer v-model="basketVisible" @written="onBasketWritten" @created="onBasketCreated" />
 
-    <el-dialog v-model="firecrawlVisible" title="Firecrawl 搜索入库" width="640px">
-      <el-form :model="firecrawlForm" label-position="top">
-        <el-form-item label="Search Query" required>
-          <el-input v-model="firecrawlForm.query" type="textarea" :rows="2" placeholder="例如：AI 监管政策 最新" />
-        </el-form-item>
-        <el-form-item label="返回条数">
-          <el-input v-model.number="firecrawlForm.limit" type="number" placeholder="默认 10" />
-        </el-form-item>
-        <el-form-item label="时间范围">
-          <el-select v-model="firecrawlForm.tbs" placeholder="不限" style="width: 100%">
-            <el-option label="不限" value="" />
-            <el-option label="1 小时内" value="qdr:h" />
-            <el-option label="1 天内" value="qdr:d" />
-            <el-option label="1 周内" value="qdr:w" />
-            <el-option label="1 月内" value="qdr:m" />
-            <el-option label="1 年内" value="qdr:y" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Sources">
-          <el-select v-model="firecrawlForm.sources" multiple placeholder="默认 web" style="width: 100%">
-            <el-option label="web" value="web" />
-            <el-option label="news" value="news" />
-          </el-select>
-        </el-form-item>
-        <!-- <el-form-item label="API Key（可选，留空则使用后端环境变量）">
-          <el-input v-model="firecrawlForm.api_key" placeholder="fc-..." />
-        </el-form-item> -->
-        <!-- <el-form-item label="API Base（可选）">
-          <el-input v-model="firecrawlForm.api_base" placeholder="https://api.firecrawl.dev/v1" />
-        </el-form-item> -->
-        <el-alert
-          title="点击后将：Firecrawl 搜索 → 自动抓取内容 → 落库到抓取记录 → 同时生成 source 类型素材加入素材篮。"
-          type="info"
-          show-icon
-          :closable="false"
-        />
-      </el-form>
+    <el-dialog v-model="unifiedSearchVisible" title="统一搜索入库" width="720px">
+      <UnifiedSearchForm
+        v-model="unifiedSearchForm"
+        mode="full"
+        :loading="unifiedSearchLoading"
+        submit-text="一键入库 + 加入素材篮"
+        @submit="onUnifiedSearch"
+      />
       <template #footer>
-        <el-button @click="firecrawlVisible = false">取消</el-button>
-        <el-button type="primary" :loading="firecrawlLoading" @click="onFirecrawlIngest">
-          一键入库 + 加入素材篮
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="aliyunVisible" title="阿里统一搜索入库" width="640px">
-      <el-form :model="aliyunForm" label-position="top">
-        <el-form-item label="Search Query" required>
-          <el-input v-model="aliyunForm.query" type="textarea" :rows="2" placeholder="例如：AI 监管政策 最新" />
-        </el-form-item>
-        <el-form-item label="搜索引擎">
-          <el-select v-model="aliyunForm.engine_type" style="width: 100%">
-            <el-option label="Generic（标准）" value="Generic" />
-            <el-option label="GenericAdvanced（增强）" value="GenericAdvanced" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="时间范围">
-          <el-select v-model="aliyunForm.time_range" style="width: 100%">
-            <el-option label="不限" value="NoLimit" />
-            <el-option label="1 天内" value="OneDay" />
-            <el-option label="1 周内" value="OneWeek" />
-            <el-option label="1 月内" value="OneMonth" />
-            <el-option label="1 年内" value="OneYear" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="分类（可选）">
-          <el-select v-model="aliyunForm.category" clearable filterable placeholder="不限" style="width: 100%">
-            <el-option label="finance 金融" value="finance" />
-            <el-option label="law 法律" value="law" />
-            <el-option label="medical 医疗" value="medical" />
-            <el-option label="internet 互联网（精选）" value="internet" />
-            <el-option label="tax 税务" value="tax" />
-            <el-option label="news_province 新闻省级" value="news_province" />
-            <el-option label="news_center 新闻中央" value="news_center" />
-          </el-select>
-        </el-form-item>
-        <el-alert
-          title="点击后将：阿里统一搜索 → 返回结果（可含正文）→ 落库到抓取记录 → 同时生成 source 类型素材加入素材篮。"
-          type="info"
-          show-icon
-          :closable="false"
-        />
-      </el-form>
-      <template #footer>
-        <el-button @click="aliyunVisible = false">取消</el-button>
-        <el-button type="primary" :loading="aliyunLoading" @click="onAliyunIngest">
+        <el-button @click="unifiedSearchVisible = false">取消</el-button>
+        <el-button type="primary" :loading="unifiedSearchLoading" @click="onUnifiedSearch">
           一键入库 + 加入素材篮
         </el-button>
       </template>
@@ -175,10 +99,12 @@ import {
   deleteMaterialPack,
   aliyunUnifiedSearchIngest,
   firecrawlSearchIngest,
+  serpapiSearchIngest,
   listMaterialPacks,
 } from "@/api/materials";
 import { useMaterialBasketStore } from "@/stores/materialBasket";
 import MaterialBasketDrawer from "@/components/MaterialBasketDrawer.vue";
+import UnifiedSearchForm, { type UnifiedSearchFormValue } from "@/components/UnifiedSearchForm.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -212,41 +138,75 @@ const fetchList = async () => {
   }
 };
 
-const aliyunVisible = ref(false);
-const aliyunLoading = ref(false);
-const aliyunForm = reactive({
+const unifiedSearchVisible = ref(false);
+const unifiedSearchLoading = ref(false);
+const unifiedSearchForm = reactive<UnifiedSearchFormValue>({
+  engine: "aliyun",
   query: "",
-  engine_type: "Generic",
-  time_range: "NoLimit",
-  category: "" as string,
+  limit: 10,
+  tbs: "",
+  sources: ["web"],
+  engineType: "Generic",
+  timeRange: "NoLimit",
+  category: "",
+  serpapiEngine: "google",
 });
 
-const openAliyun = () => {
-  aliyunVisible.value = true;
+const openUnifiedSearch = (engine?: UnifiedSearchFormValue["engine"]) => {
+  if (engine) {
+    unifiedSearchForm.engine = engine;
+  }
+  unifiedSearchVisible.value = true;
 };
 
-const onAliyunIngest = async () => {
-  if (!aliyunForm.query.trim()) {
+const onUnifiedSearch = async () => {
+  const query = unifiedSearchForm.query.trim();
+  if (!query) {
     ElMessage.warning("请填写搜索 query");
     return;
   }
-  aliyunLoading.value = true;
+  unifiedSearchLoading.value = true;
   try {
-    const resp = await aliyunUnifiedSearchIngest({
-      query: aliyunForm.query.trim(),
-      engine_type: aliyunForm.engine_type || "Generic",
-      time_range: aliyunForm.time_range || "NoLimit",
-      category: aliyunForm.category || undefined,
-      include_main_text: true,
-    });
-    basket.addMany(resp.items || []);
-    ElMessage.success(`已入库 ${resp.ingested} 条，加入素材篮 ${resp.items?.length || 0} 条（素材篮共 ${basket.count} 条）`);
+    // 中文说明：统一入口根据引擎切换不同入库 API。
+    if (unifiedSearchForm.engine === "firecrawl") {
+      const resp = await firecrawlSearchIngest({
+        query,
+        limit: unifiedSearchForm.limit || 10,
+        tbs: unifiedSearchForm.tbs || undefined,
+        sources: unifiedSearchForm.sources || undefined,
+      });
+      basket.addMany(resp.items || []);
+      ElMessage.success(`已入库 ${resp.ingested} 条，加入素材篮 ${resp.items?.length || 0} 条（素材篮共 ${basket.count} 条）`);
+    } else if (unifiedSearchForm.engine === "aliyun") {
+      const resp = await aliyunUnifiedSearchIngest({
+        query,
+        engine_type: unifiedSearchForm.engineType || "Generic",
+        time_range: unifiedSearchForm.timeRange || "NoLimit",
+        category: unifiedSearchForm.category || undefined,
+        include_main_text: true,
+      });
+      basket.addMany(resp.items || []);
+      ElMessage.success(`已入库 ${resp.ingested} 条，加入素材篮 ${resp.items?.length || 0} 条（素材篮共 ${basket.count} 条）`);
+    } else {
+      const resp = await serpapiSearchIngest({
+        query,
+        limit: unifiedSearchForm.limit || 10,
+        engine: unifiedSearchForm.serpapiEngine || "google",
+      });
+      basket.addMany(resp.items || []);
+      ElMessage.success(`已入库 ${resp.ingested} 条，加入素材篮 ${resp.items?.length || 0} 条（素材篮共 ${basket.count} 条）`);
+    }
     basketVisible.value = true;
-    aliyunVisible.value = false;
+    unifiedSearchVisible.value = false;
   } catch (err: any) {
-    ElMessage.error(err.message || "阿里统一搜索入库失败");
+    const fallback = unifiedSearchForm.engine === "firecrawl"
+      ? "Firecrawl 搜索入库失败"
+      : unifiedSearchForm.engine === "aliyun"
+        ? "阿里统一搜索入库失败"
+        : "SerpAPI 搜索入库失败";
+    ElMessage.error(err.message || fallback);
   } finally {
-    aliyunLoading.value = false;
+    unifiedSearchLoading.value = false;
   }
 };
 
@@ -311,46 +271,6 @@ const onBasketCreated = async (packId: number) => {
   goDetail(packId);
 };
 
-const firecrawlVisible = ref(false);
-const firecrawlLoading = ref(false);
-const firecrawlForm = reactive({
-  query: "",
-  limit: 10,
-  tbs: "",
-  sources: ["web"] as string[],
-  api_key: "",
-  api_base: "",
-});
-
-const openFirecrawl = () => {
-  firecrawlVisible.value = true;
-};
-
-const onFirecrawlIngest = async () => {
-  if (!firecrawlForm.query.trim()) {
-    ElMessage.warning("请填写搜索 query");
-    return;
-  }
-  firecrawlLoading.value = true;
-  try {
-    const resp = await firecrawlSearchIngest({
-      query: firecrawlForm.query.trim(),
-      limit: firecrawlForm.limit || 10,
-      tbs: firecrawlForm.tbs || undefined,
-      sources: firecrawlForm.sources || undefined,
-      api_key: firecrawlForm.api_key || undefined,
-      api_base: firecrawlForm.api_base || undefined,
-    });
-    basket.addMany(resp.items || []);
-    ElMessage.success(`已入库 ${resp.ingested} 条，加入素材篮 ${resp.items?.length || 0} 条（素材篮共 ${basket.count} 条）`);
-    basketVisible.value = true;
-    firecrawlVisible.value = false;
-  } catch (err: any) {
-    ElMessage.error(err.message || "Firecrawl 搜索入库失败");
-  } finally {
-    firecrawlLoading.value = false;
-  }
-};
 
 const onCreate = async () => {
   if (!createForm.name.trim()) {
@@ -381,8 +301,14 @@ onMounted(() => {
 watch(
   () => route.query.tool,
   (v) => {
-    if (String(v || "").toLowerCase() === "aliyun") {
-      openAliyun();
+    if (!v) return;
+    const tool = String(v || "").toLowerCase();
+    if (tool === "aliyun") {
+      openUnifiedSearch("aliyun");
+    } else if (tool === "firecrawl") {
+      openUnifiedSearch("firecrawl");
+    } else if (tool === "serpapi") {
+      openUnifiedSearch("serpapi");
     }
   },
   { immediate: true }

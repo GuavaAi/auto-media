@@ -5,6 +5,8 @@ import type {
   DedupeResponse,
   FirecrawlSearchIngestRequest,
   FirecrawlSearchIngestResponse,
+  SerpapiSearchIngestRequest,
+  SerpapiSearchIngestResponse,
   MaterialItem,
   MaterialItemBatchCreateRequest,
   MaterialItemSearchResponse,
@@ -69,3 +71,6 @@ export const aliyunUnifiedSearchIngest = (payload: AliyunUnifiedSearchIngestRequ
   http
     .post<AliyunUnifiedSearchIngestResponse>("/materials/aliyun-unified-search:ingest", payload)
     .then((r) => r.data);
+
+export const serpapiSearchIngest = (payload: SerpapiSearchIngestRequest) =>
+  http.post<SerpapiSearchIngestResponse>("/materials/serpapi-search:ingest", payload).then((r) => r.data);

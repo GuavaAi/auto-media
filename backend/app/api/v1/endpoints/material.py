@@ -23,6 +23,8 @@ from app.schemas.material import (
     DedupeResponse,
     FirecrawlSearchIngestRequest,
     FirecrawlSearchIngestResponse,
+    SerpapiSearchIngestRequest,
+    SerpapiSearchIngestResponse,
     MaterialItemBatchCreateRequest,
     MaterialItemOut,
     MaterialItemSearchResponse,
@@ -54,6 +56,60 @@ def _preview_text(text: str, max_len: int = 220) -> str:
     return t[:max_len] + "..."
 
 
+def _build_cached_item(rec: DataSourceContent, title: str | None, meta: dict | None = None) -> dict:
+    """中文说明：命中去重时，将历史内容回填给前端展示。"""
+    display_title = (title or rec.title or rec.url or "").strip() or (rec.url or "")
+    return {
+        "item_type": "source",
+        "text": f"{display_title}\n{rec.content or ''}",
+        "source_url": rec.url,
+        "source_content_id": rec.id,
+        "meta": meta or {},
+    }
+
+
+def _serpapi_search(
+    *,
+    api_key: str,
+    query: str,
+    engine: str,
+    limit: int,
+    tbs: str | None,
+    hl: str | None,
+    gl: str | None,
+    location: str | None,
+) -> dict[str, Any]:
+    # 中文说明：SerpAPI 使用 HTTP 调用，统一走 search.json。
+    endpoint = "https://serpapi.com/search.json"
+    params: dict[str, Any] = {
+        "api_key": api_key,
+        "engine": engine,
+        "q": query,
+        "num": max(1, min(100, int(limit or 10))),
+    }
+    if tbs:
+        params["tbs"] = tbs
+    if hl:
+        params["hl"] = hl
+    if gl:
+        params["gl"] = gl
+    if location:
+        params["location"] = location
+
+    try:
+        resp = requests.get(endpoint, params=params, timeout=30)
+    except Exception as exc:
+        raise RuntimeError(f"SerpAPI 请求失败：{exc}") from exc
+
+    if resp.status_code >= 400:
+        raise RuntimeError(f"SerpAPI 请求失败（HTTP {resp.status_code}）：{_safe_resp_text(resp)}")
+
+    try:
+        return resp.json()
+    except Exception as exc:
+        raise RuntimeError(f"SerpAPI 返回非 JSON：{_safe_resp_text(resp)}") from exc
+
+
 def _normalize_firecrawl_base(base: str | None) -> str:
     b = (base or "https://api.firecrawl.dev/v1").rstrip("/")
     if b.endswith("/v2"):
@@ -63,6 +119,32 @@ def _normalize_firecrawl_base(base: str | None) -> str:
     if b.endswith("/v1"):
         return b[: -len("/v1")] + "/v2"
     return b + "/v2"
+
+
+def _resolve_aliyun_iqs_apikey_endpoint(extra: dict | None = None) -> str:
+    # 中文说明：APIKey(Bearer) 模式统一使用 cloud-iqs 的公共入口；允许通过环境变量或 extra 覆盖。
+    env_ep = (os.getenv("ALIYUN_IQS_API_ENDPOINT") or "").strip()
+    if env_ep:
+        return env_ep
+    if isinstance(extra, dict):
+        ep2 = str(extra.get("api_endpoint") or extra.get("endpoint") or "").strip()
+        if ep2:
+            return ep2
+    return "https://cloud-iqs.aliyuncs.com/search/unified"
+
+
+def _safe_resp_text(resp: requests.Response, max_len: int = 1200) -> str:
+    # 中文说明：响应体可能很长，这里截断输出用于排障；避免泄露敏感信息。
+    try:
+        t = resp.text or ""
+    except Exception:
+        t = ""
+    t = t.strip()
+    if not t:
+        return ""
+    if len(t) <= max_len:
+        return t
+    return t[:max_len] + "..."
 
 
 def _resolve_aliyun_iqs_credentials(db: Session) -> dict[str, Any]:
@@ -86,10 +168,15 @@ def _resolve_aliyun_iqs_credentials(db: Session) -> dict[str, Any]:
             sk2 = str(extra.get("access_key_secret") or extra.get("accessKeySecret") or "").strip()
             if ak2 and sk2:
                 return {"mode": "aksk", "access_key_id": ak2, "access_key_secret": sk2}
-        
+
         # 如果没有配置 AK/SK，但配置了 key，则使用 API Key 模式
         if picked.key and str(picked.key).strip():
-            return {"mode": "apikey", "api_key": str(picked.key).strip()}
+            extra2 = picked.extra if isinstance(getattr(picked, "extra", None), dict) else None
+            return {
+                "mode": "apikey",
+                "api_key": str(picked.key).strip(),
+                "api_endpoint": _resolve_aliyun_iqs_apikey_endpoint(extra2),
+            }
 
     raise HTTPException(
         status_code=400,
@@ -101,11 +188,20 @@ def _resolve_aliyun_iqs_credentials(db: Session) -> dict[str, Any]:
 
 
 
-def _aliyun_iqs_call_via_apikey(*, query: str, engine_type: str, time_range: str, category: str | None, location: str | None, include_main_text: bool, advanced_params: dict[str, str] | None, api_key: str) -> dict[str, Any]:
+def _aliyun_iqs_call_via_apikey(
+    *,
+    query: str,
+    engine_type: str,
+    time_range: str,
+    category: str | None,
+    location: str | None,
+    include_main_text: bool,
+    advanced_params: dict[str, str] | None,
+    api_key: str,
+    endpoint: str,
+) -> dict[str, Any]:
     """通过 HTTP API (Bearer Token) 调用阿里云统一搜索"""
-    # 接口地址通常为：https://{endpoint}/linked-retrieval/linked-retrieval-entry/v1/iqs/search/unified
-    # 这里的 endpoint 使用与 SDK 一致的 cn-zhangjiakou
-    endpoint = "https://iqs.cn-zhangjiakou.aliyuncs.com/linked-retrieval/linked-retrieval-entry/v1/iqs/search/unified"
+    ep = (endpoint or "").strip() or "https://cloud-iqs.aliyuncs.com/search/unified"
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -120,6 +216,7 @@ def _aliyun_iqs_call_via_apikey(*, query: str, engine_type: str, time_range: str
         "contents": {
             "mainText": include_main_text,
             "markdownText": False,
+            "summary": False,
             "rerankScore": True,
         },
     }
@@ -131,11 +228,19 @@ def _aliyun_iqs_call_via_apikey(*, query: str, engine_type: str, time_range: str
         body["advancedParams"] = advanced_params
 
     try:
-        resp = requests.post(endpoint, json=body, headers=headers, timeout=30)
-        resp.raise_for_status()
+        resp = requests.post(ep, json=body, headers=headers, timeout=30)
+    except Exception as exc:
+        raise RuntimeError(f"API Key 调用失败（请求异常，endpoint={ep}）：{exc}") from exc
+
+    if resp.status_code >= 400:
+        detail = _safe_resp_text(resp)
+        raise RuntimeError(f"API Key 调用失败（HTTP {resp.status_code}，endpoint={ep}）：{detail}")
+
+    try:
         data = resp.json()
     except Exception as exc:
-        raise RuntimeError(f"API Key 调用失败: {exc}") from exc
+        detail = _safe_resp_text(resp)
+        raise RuntimeError(f"API Key 调用失败（非 JSON 响应，endpoint={ep}）：{detail}") from exc
     
     # 兼容返回结构
     if "pageItems" not in data and "result" in data and isinstance(data["result"], dict):
@@ -332,6 +437,7 @@ def firecrawl_search_ingest(
     ingested = 0
     skipped = 0
     basket_items = []
+    seen_content_ids: set[int] = set()
 
     now_naive = datetime.now()
 
@@ -354,6 +460,7 @@ def firecrawl_search_ingest(
             skipped += 1
             continue
 
+        title = it.get("title") if isinstance(it.get("title"), str) else None
         url_hash = hashlib.md5(str(url).encode("utf-8", "ignore")).hexdigest()
         last_rec = (
             db.query(DataSourceContent)
@@ -367,9 +474,22 @@ def firecrawl_search_ingest(
         if last_rec and isinstance(last_rec.extra, dict):
             if last_rec.extra.get("content_hash_clean") == clean_res.content_hash_clean:
                 skipped += 1
+                # 中文说明：命中去重时仍返回缓存内容
+                if last_rec.id not in seen_content_ids:
+                    basket_items.append(
+                        _build_cached_item(
+                            last_rec,
+                            title,
+                            {
+                                "firecrawl_query": query,
+                                "firecrawl_rank": it.get("_firecrawl_rank"),
+                                "cached": True,
+                            },
+                        )
+                    )
+                    seen_content_ids.add(last_rec.id)
                 continue
 
-        title = it.get("title") if isinstance(it.get("title"), str) else None
         description = it.get("description") or it.get("snippet")
         meta = it.get("metadata") if isinstance(it.get("metadata"), dict) else {}
         status_code = meta.get("statusCode") if isinstance(meta, dict) else None
@@ -419,10 +539,197 @@ def firecrawl_search_ingest(
                 },
             }
         )
+        seen_content_ids.add(rec.id)
 
     db.commit()
 
     return FirecrawlSearchIngestResponse(
+        ingested=ingested,
+        skipped=skipped,
+        items=basket_items,
+    )
+
+
+@router.post(
+    "/serpapi-search:ingest",
+    response_model=SerpapiSearchIngestResponse,
+    summary="SerpAPI 搜索：一键入库并返回可加入素材篮的条目",
+)
+def serpapi_search_ingest(
+    payload: SerpapiSearchIngestRequest,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.require_user),
+) -> SerpapiSearchIngestResponse:
+    query = (payload.query or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query 不能为空")
+
+    api_key = (payload.api_key or "").strip()
+    if not api_key:
+        picked = pick_api_key(db, "serpapi", mark_used=True)
+        if picked:
+            api_key = (picked.key or "").strip()
+    if not api_key:
+        api_key = (os.getenv("SERPAPI_API_KEY") or "").strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="未配置 SerpAPI API Key（可在 APIKey 池 provider=serpapi 或环境变量 SERPAPI_API_KEY 中配置）")
+
+    engine = (payload.engine or "google").strip() or "google"
+    limit = int(payload.limit or 10)
+    limit = max(1, min(100, limit))
+
+    # 使用一个系统数据源承载搜索入库的 DataSourceContent，保证追溯链路一致
+    ds_name = "SerpAPI 搜索"
+    ds = db.query(DataSource).filter(DataSource.name == ds_name).first()
+    expected_cfg = {
+        "api_mode": "serpapi_search",
+    }
+    if not ds:
+        ds = DataSource(
+            name=ds_name,
+            source_type="api",
+            config=expected_cfg,
+            enable_schedule=False,
+        )
+        db.add(ds)
+        db.commit()
+        db.refresh(ds)
+    else:
+        # 中文说明：系统数据源按 name 固定，因此这里可以安全迁移。
+        needs_update = False
+        if (ds.source_type or "") != "api":
+            ds.source_type = "api"
+            needs_update = True
+        if not isinstance(ds.config, dict) or ds.config.get("api_mode") != "serpapi_search":
+            ds.config = expected_cfg
+            needs_update = True
+        if ds.enable_schedule:
+            ds.enable_schedule = False
+            needs_update = True
+        if needs_update:
+            db.commit()
+            db.refresh(ds)
+
+    try:
+        jd = _serpapi_search(
+            api_key=api_key,
+            query=query,
+            engine=engine,
+            limit=limit,
+            tbs=(payload.tbs or None),
+            hl=(payload.hl or None),
+            gl=(payload.gl or None),
+            location=(payload.location or None),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"SerpAPI 搜索失败：{exc}") from exc
+
+    organic = jd.get("organic_results")
+    if not isinstance(organic, list):
+        raise HTTPException(status_code=400, detail=f"SerpAPI 返回异常：{jd}")
+
+    from app.services.text_cleaner import clean_text
+
+    ingested = 0
+    skipped = 0
+    basket_items: list[dict] = []
+    seen_content_ids: set[int] = set()
+    now_naive = datetime.now()
+
+    for idx, it in enumerate(organic):
+        if not isinstance(it, dict):
+            skipped += 1
+            continue
+
+        url = it.get("link")
+        if not isinstance(url, str) or not url.strip():
+            skipped += 1
+            continue
+        url = url.strip()
+
+        title = it.get("title") if isinstance(it.get("title"), str) else None
+        snippet = it.get("snippet") if isinstance(it.get("snippet"), str) else None
+        raw_text = (snippet or "").strip()
+        if not raw_text:
+            skipped += 1
+            continue
+
+        clean_res = clean_text(raw_text, None)
+        content_text = (clean_res.clean_text or "").strip()
+        if not content_text:
+            skipped += 1
+            continue
+
+        url_hash = hashlib.md5(str(url).encode("utf-8", "ignore")).hexdigest()
+        last_rec = (
+            db.query(DataSourceContent)
+            .filter(
+                DataSourceContent.datasource_id == ds.id,
+                DataSourceContent.url_hash == url_hash,
+            )
+            .order_by(desc(DataSourceContent.fetched_at))
+            .first()
+        )
+        if last_rec and isinstance(last_rec.extra, dict):
+            if last_rec.extra.get("content_hash_clean") == clean_res.content_hash_clean:
+                skipped += 1
+                # 中文说明：命中去重时仍返回缓存内容
+                if last_rec.id not in seen_content_ids:
+                    basket_items.append(
+                        _build_cached_item(
+                            last_rec,
+                            title,
+                            {
+                                "serpapi_rank": idx + 1,
+                                "serpapi_engine": engine,
+                                "cached": True,
+                            },
+                        )
+                    )
+                    seen_content_ids.add(last_rec.id)
+                continue
+
+        rec = DataSourceContent(
+            user_id=current_user.id,
+            datasource_id=ds.id,
+            source_type="url",
+            title=(title or url),
+            url=url,
+            url_hash=url_hash,
+            content=content_text,
+            extra={
+                "serpapi_engine": engine,
+                "serpapi_query": query,
+                "serpapi_rank": idx + 1,
+                "serpapi_title": title,
+                "serpapi_snippet": snippet,
+                "content_hash_clean": clean_res.content_hash_clean,
+                "clean_stats": clean_res.stats,
+                "quality_flags": clean_res.quality_flags,
+            },
+            fetched_at=now_naive,
+        )
+        db.add(rec)
+        db.flush()
+
+        ingested += 1
+        basket_items.append(
+            {
+                "item_type": "source",
+                "text": (title or url) + "\n" + content_text,
+                "source_url": url,
+                "source_content_id": rec.id,
+                "meta": {
+                    "serpapi_rank": idx + 1,
+                    "serpapi_engine": engine,
+                },
+            }
+        )
+        seen_content_ids.add(rec.id)
+
+    db.commit()
+
+    return SerpapiSearchIngestResponse(
         ingested=ingested,
         skipped=skipped,
         items=basket_items,
@@ -507,6 +814,7 @@ def aliyun_unified_search_ingest(
                 include_main_text=include_main_text,
                 advanced_params=advanced_params,
                 api_key=str(creds.get("api_key") or ""),
+                endpoint=str(creds.get("api_endpoint") or ""),
             )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"阿里统一搜索失败（{creds.get('mode')}）：{exc}") from exc
@@ -518,6 +826,7 @@ def aliyun_unified_search_ingest(
     ingested = 0
     skipped = 0
     basket_items: list[dict] = []
+    seen_content_ids: set[int] = set()
     now_naive = datetime.now()
 
     from app.services.text_cleaner import clean_text
@@ -564,6 +873,22 @@ def aliyun_unified_search_ingest(
         if last_rec and isinstance(last_rec.extra, dict):
             if last_rec.extra.get("content_hash") == content_hash:
                 skipped += 1
+                # 中文说明：命中去重时仍返回缓存内容
+                if last_rec.id not in seen_content_ids:
+                    basket_items.append(
+                        _build_cached_item(
+                            last_rec,
+                            title,
+                            {
+                                "iqs_query": query,
+                                "iqs_rank": idx + 1,
+                                "iqs_engine_type": engine_type,
+                                "iqs_time_range": time_range,
+                                "cached": True,
+                            },
+                        )
+                    )
+                    seen_content_ids.add(last_rec.id)
                 continue
 
         rec = DataSourceContent(
@@ -610,6 +935,7 @@ def aliyun_unified_search_ingest(
                 },
             }
         )
+        seen_content_ids.add(rec.id)
 
     db.commit()
 

@@ -119,3 +119,23 @@ class AliyunUnifiedSearchIngestResponse(BaseModel):
     ingested: int = Field(..., description="成功入库条数")
     skipped: int = Field(..., description="去重/无内容等跳过条数")
     items: List[MaterialItemCreate] = Field(..., description="可直接加入素材篮的条目列表")
+
+
+class SerpapiSearchIngestRequest(BaseModel):
+    query: str = Field(..., description="SerpAPI 搜索 query")
+    limit: int = Field(10, ge=1, le=100, description="返回条数（1~100）")
+    engine: Optional[str] = Field(
+        "google",
+        description="SerpAPI 引擎（默认 google）。更多可选值参考 SerpAPI 文档",
+    )
+    tbs: Optional[str] = Field(None, description="可选：Google tbs 参数（例如 qdr:d/qdr:w/cdr:1,cd_min:...）")
+    hl: Optional[str] = Field(None, description="可选：语言（例如 zh-CN）")
+    gl: Optional[str] = Field(None, description="可选：国家（例如 cn）")
+    location: Optional[str] = Field(None, description="可选：地理位置（例如 Hangzhou, Zhejiang, China）")
+    api_key: Optional[str] = Field(None, description="可选：SerpAPI API Key，留空则使用服务端环境变量/APIKey 池")
+
+
+class SerpapiSearchIngestResponse(BaseModel):
+    ingested: int = Field(..., description="成功入库条数")
+    skipped: int = Field(..., description="去重/无内容等跳过条数")
+    items: List[MaterialItemCreate] = Field(..., description="可直接加入素材篮的条目列表")
